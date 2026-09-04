@@ -35,18 +35,20 @@
   box-shadow: 0 10px 25px -5px rgba(0, 80, 180, 0.25);
 }
 
-/* Card aesthetics matching screenshot */
+/* Card aesthetics - stationary with stable border and shadow (no jumping or shaking) */
 .card-theme {
   background-color: #ffffff;
   border-radius: 1.5rem;
   border: 1px solid #f1f5f9;
   box-shadow: 0 4px 20px -2px rgba(148, 163, 184, 0.08);
-  transition: all 0.3s ease;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  transform: none !important;
 }
 
 .card-theme:hover {
-  box-shadow: 0 12px 30px -4px rgba(0, 119, 182, 0.15);
-  transform: translateY(-2px);
+  box-shadow: 0 8px 24px -4px rgba(0, 119, 182, 0.12);
+  border-color: #e2e8f0;
+  transform: none !important;
 }
 
 /* Floating circle arrow button */
@@ -60,12 +62,11 @@
   align-items: center;
   justify-content: center;
   box-shadow: 0 6px 16px rgba(0, 180, 216, 0.4);
-  transition: all 0.2s ease;
+  transition: background-color 0.2s ease;
 }
 
 .floating-arrow-btn:hover {
   background-color: #0077b6;
-  transform: scale(1.1);
 }
 
 /* Progress pill badge */
