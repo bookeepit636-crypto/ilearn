@@ -72,7 +72,7 @@ interface AppContextType {
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
-const LOCAL_STORAGE_KEY = 'bookkeep_it_state_v4';
+const LOCAL_STORAGE_KEY = 'bookkeep_it_state_v6';
 
 export const normalizeCourse = (crs: Course): Course => {
   const actualTotal = crs.topics && crs.topics.length > 0
@@ -136,13 +136,44 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Load state from LocalStorage on mount
   useEffect(() => {
     try {
-      const saved = localStorage.getItem(LOCAL_STORAGE_KEY) || localStorage.getItem('bookkeep_it_state_v3');
+      const saved =
+        localStorage.getItem(LOCAL_STORAGE_KEY) ||
+        localStorage.getItem('bookkeep_it_state_v5') ||
+        localStorage.getItem('bookkeep_it_state_v4');
       if (saved) {
         const parsed = JSON.parse(saved);
         if (parsed.courses) {
-          const normalizedCourses = parsed.courses.map(normalizeCourse);
-          setCourses(normalizedCourses);
-          const totalDone = normalizedCourses.reduce(
+          const savedCourses = parsed.courses.map(normalizeCourse);
+          const mergedCourses = initialCourses.map((initCrs) => {
+            const existing = savedCourses.find((sc: Course) => sc.id === initCrs.id || sc.title.toLowerCase() === initCrs.title.toLowerCase());
+            if (!existing) return normalizeCourse(initCrs);
+            // Sync updated video URLs and structure while preserving completion flags
+            const updatedTopics = initCrs.topics.map((initTpc) => {
+              const existingTpc = existing.topics?.find((et: any) => et.id === initTpc.id || et.title === initTpc.title);
+              const updatedLessons = initTpc.lessons.map((initLsn) => {
+                const existingLsn = existingTpc?.lessons?.find((el: any) => el.id === initLsn.id || el.title === initLsn.title);
+                return {
+                  ...initLsn,
+                  isCompleted: existingLsn !== undefined ? existingLsn.isCompleted : initLsn.isCompleted
+                };
+              });
+              return {
+                ...initTpc,
+                lessons: updatedLessons
+              };
+            });
+            return normalizeCourse({
+              ...existing,
+              ...initCrs,
+              topics: updatedTopics
+            });
+          });
+          const customCourses = savedCourses.filter(
+            (sc: Course) => !initialCourses.some((ic) => ic.id === sc.id || ic.title.toLowerCase() === sc.title.toLowerCase())
+          );
+          const finalCourses = [...mergedCourses, ...customCourses];
+          setCourses(finalCourses);
+          const totalDone = finalCourses.reduce(
             (acc: number, c: Course) => acc + (c.completedLessons || 0),
             0
           );
@@ -160,7 +191,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (parsed.quizzes) setQuizzes(parsed.quizzes);
         if (parsed.submissions) setSubmissions(parsed.submissions);
         if (parsed.materials) setMaterials(parsed.materials);
-        if (parsed.videos) setVideos(parsed.videos);
+        if (parsed.videos) {
+          const updatedVideos = initialVideos.map((initVid) => {
+            const existing = parsed.videos.find((v: VideoLesson) => v.id === initVid.id);
+            return existing ? { ...existing, videoUrl: initVid.videoUrl } : initVid;
+          });
+          setVideos(updatedVideos);
+        }
         if (parsed.schedules) setSchedules(parsed.schedules);
         if (parsed.notifications) setNotifications(parsed.notifications);
       }

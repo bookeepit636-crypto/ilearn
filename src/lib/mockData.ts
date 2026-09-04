@@ -18,13 +18,97 @@ export const initialProfile: UserProfile = {
 
 export const initialCourses: Course[] = [
   {
-    id: 'crs-101',
-    title: 'Basic Accounting Principles & Concepts',
+    id: 'crs-1',
+    title: 'Bookkeeping Cycle',
+    code: 'ACCT 102',
+    category: 'Bookkeeping Cycle',
+    level: 'Intermediate',
+    instructor: 'Dr. Marcus Brody, CPA',
+    thumbnail: 'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?auto=format&fit=crop&q=80&w=600',
+    description: 'Step-by-step guide from analyzing source documents, recording General Journal entries, posting to General Ledger, to preparing the Trial Balance.',
+    totalLessons: 3,
+    completedLessons: 3,
+    topics: [
+      {
+        id: 'tpc-102-1',
+        title: 'Journals and Ledger Posting',
+        description: 'Mastering transaction records and T-Accounts.',
+        lessons: [
+          {
+            id: 'lsn-4',
+            topicId: 'tpc-102-1',
+            title: 'Recording Transactions in the General Journal',
+            description: 'How to write structured debits, credits, dates, and explanations.',
+            duration: '35 mins',
+            isCompleted: true,
+            videoUrl: 'https://www.youtube.com/embed/Q_6A1ieXgp4',
+            quizId: 'qz-104',
+            downloadIds: ['dl-105', 'dl-106'],
+            contentMarkdown: `
+# General Journal Entries
+
+A General Journal entry acts as a chronological diary of transactions.
+
+### Example Journal Entry:
+*Date: Jan 5, 2026*
+* **Debit**: Cash ($5,000)
+* **Credit**: Service Revenue ($5,000)
+* *Explanation: Rendered bookkeeping services for cash.*
+`
+          },
+          {
+            id: 'lsn-5',
+            topicId: 'tpc-102-1',
+            title: 'Posting to the General Ledger & T-Accounts',
+            description: 'Transferring journal entries to individual ledger accounts.',
+            duration: '30 mins',
+            isCompleted: true,
+            videoUrl: 'https://www.youtube.com/embed/56xscQ4viWE',
+            quizId: 'qz-105',
+            downloadIds: ['dl-106'],
+            contentMarkdown: `
+# General Ledger & T-Accounts
+
+The General Ledger organizes balances by account title.
+T-Accounts summarize total Debits on the left and total Credits on the right to derive the ending account balance.
+`
+          }
+        ]
+      },
+      {
+        id: 'tpc-102-2',
+        title: 'Trial Balance & Adjusting Entries',
+        description: 'Verify equality of Debits and Credits and calculate accrued/deferred adjustments.',
+        lessons: [
+          {
+            id: 'lsn-6',
+            topicId: 'tpc-102-2',
+            title: 'Preparing the Unadjusted & Adjusted Trial Balance',
+            description: 'Locating errors, trial balance worksheets, and balancing rules.',
+            duration: '40 mins',
+            isCompleted: true,
+            videoUrl: 'https://www.youtube.com/embed/8ZKRWAad6Sk',
+            quizId: 'qz-106',
+            downloadIds: ['dl-107'],
+            contentMarkdown: `
+# Preparing a Trial Balance
+
+A Trial Balance lists all general ledger accounts with their final Debit or Credit balance.
+Sum of Debits must equal Sum of Credits.
+`
+          }
+        ]
+      }
+    ]
+  },
+  {
+    id: 'crs-2',
+    title: 'Basic Accounting Principles',
     code: 'ACCT 101',
     category: 'Basic Accounting Principles',
     level: 'Beginner',
     instructor: 'Prof. Eleanor Vance, CPA',
-    thumbnail: 'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?auto=format&fit=crop&q=80&w=600',
+    thumbnail: 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?auto=format&fit=crop&q=80&w=600',
     description: 'Master the fundamental rules of accounting: Double-entry bookkeeping, the Accounting Equation (Assets = Liabilities + Equity), and core GAAP assumptions.',
     totalLessons: 3,
     completedLessons: 3,
@@ -69,7 +153,7 @@ $$\\text{Assets} = \\text{Liabilities} + \\text{Owner's Equity}$$
             description: 'Learn the golden rules of Debit (Dr) and Credit (Cr) entries.',
             duration: '25 mins',
             isCompleted: true,
-            videoUrl: 'https://www.youtube.com/embed/V3Nl3z2B9zU',
+            videoUrl: 'https://www.youtube.com/embed/VhwZ9t2b3Zk',
             quizId: 'qz-102',
             downloadIds: ['dl-103'],
             contentMarkdown: `
@@ -103,6 +187,7 @@ In double-entry bookkeeping, every transaction affects **at least two accounts**
             description: 'Compare cash timing vs revenue recognition when earned.',
             duration: '30 mins',
             isCompleted: true,
+            videoUrl: 'https://www.youtube.com/embed/YZyBSU6YdmM',
             quizId: 'qz-103',
             downloadIds: ['dl-104'],
             contentMarkdown: `
@@ -122,81 +207,54 @@ Under **Cash Basis Accounting**:
     ]
   },
   {
-    id: 'crs-102',
-    title: 'The Complete Bookkeeping Cycle',
-    code: 'ACCT 102',
-    category: 'Bookkeeping Cycle',
-    level: 'Intermediate',
-    instructor: 'Dr. Marcus Brody, CPA',
-    thumbnail: 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?auto=format&fit=crop&q=80&w=600',
-    description: 'Step-by-step guide from analyzing source documents, recording General Journal entries, posting to General Ledger, preparing Unadjusted Trial Balance, to Adjusting & Closing entries.',
-    totalLessons: 3,
+    id: 'crs-3',
+    title: 'Introduction to Bookkeeping',
+    code: 'ACCT 100',
+    category: 'Basic Accounting Principles',
+    level: 'Beginner',
+    instructor: 'Prof. Eleanor Vance, CPA',
+    thumbnail: 'https://images.unsplash.com/photo-1590283603385-17ffb3a7f29f?auto=format&fit=crop&q=80&w=600',
+    description: 'Covers the fundamentals, purpose, career responsibilities, and essential importance of modern bookkeeping.',
+    totalLessons: 2,
     completedLessons: 2,
     topics: [
       {
-        id: 'tpc-102-1',
-        title: 'Journals and Ledger Posting',
-        description: 'Mastering transaction records and T-Accounts.',
+        id: 'tpc-100-1',
+        title: 'The Role of Bookkeeping',
+        description: 'Understand the difference between bookkeeping and accounting.',
         lessons: [
           {
-            id: 'lsn-4',
-            topicId: 'tpc-102-1',
-            title: 'Recording Transactions in the General Journal',
-            description: 'How to write structured debits, credits, dates, and explanations.',
-            duration: '35 mins',
+            id: 'lsn-8',
+            topicId: 'tpc-100-1',
+            title: 'The Purpose and Responsibilities of a Bookkeeper',
+            description: 'Daily ledger maintenance, reconciliations, and reporting support.',
+            duration: '20 mins',
             isCompleted: true,
-            videoUrl: 'https://www.youtube.com/embed/V3Nl3z2B9zU',
-            quizId: 'qz-104',
-            downloadIds: ['dl-105', 'dl-106'],
+            videoUrl: 'https://www.youtube.com/embed/Q_6A1ieXgp4',
+            quizId: 'qz-101',
+            downloadIds: ['dl-101'],
             contentMarkdown: `
-# General Journal Entries
+# The Purpose of Bookkeeping
 
-A General Journal entry acts as a chronological diary of transactions.
-
-### Example Journal Entry:
-*Date: Jan 5, 2026*
-* **Debit**: Cash ($5,000)
-* **Credit**: Service Revenue ($5,000)
-* *Explanation: Rendered bookkeeping services for cash.*
+Bookkeeping is the systematic recording, organizing, and tracking of financial transactions in a business.
+* Maintains accuracy of financial accounts.
+* Prevents discrepancies and tracks cash flows.
 `
           },
           {
-            id: 'lsn-5',
-            topicId: 'tpc-102-1',
-            title: 'Posting to the General Ledger & T-Accounts',
-            description: 'Transferring journal entries to individual ledger accounts.',
-            duration: '30 mins',
+            id: 'lsn-9',
+            topicId: 'tpc-100-1',
+            title: 'Source Documents & Audit Trails',
+            description: 'Invoices, receipts, purchase orders, and bank statements.',
+            duration: '25 mins',
             isCompleted: true,
-            quizId: 'qz-105',
-            downloadIds: ['dl-106'],
+            videoUrl: 'https://www.youtube.com/embed/56xscQ4viWE',
+            quizId: 'qz-102',
+            downloadIds: ['dl-102'],
             contentMarkdown: `
-# General Ledger & T-Accounts
+# Source Documents in Accounting
 
-The General Ledger organizes balances by account title.
-T-Accounts summarize total Debits on the left and total Credits on the right to derive the ending account balance.
-`
-          }
-        ]
-      },
-      {
-        id: 'tpc-102-2',
-        title: 'Trial Balance & Adjusting Entries',
-        description: 'Verify equality of Debits and Credits and calculate accrued/deferred adjustments.',
-        lessons: [
-          {
-            id: 'lsn-6',
-            topicId: 'tpc-102-2',
-            title: 'Preparing the Unadjusted & Adjusted Trial Balance',
-            description: 'Locating errors, trial balance worksheets, and balancing rules.',
-            duration: '40 mins',
-            isCompleted: false,
-            quizId: 'qz-106',
-            downloadIds: ['dl-107'],
-            contentMarkdown: `
-# Preparing a Trial Balance
-
-A Trial Balance lists all general ledger accounts with their final Debit or Credit balance.
-Sum of Debits must equal Sum of Credits.
+Every accounting entry must have evidence through a valid source document such as official receipts, bills, and contracts.
 `
           }
         ]
@@ -204,16 +262,122 @@ Sum of Debits must equal Sum of Credits.
     ]
   },
   {
-    id: 'crs-103',
-    title: 'Financial Statements Preparation & Analysis',
+    id: 'crs-4',
+    title: 'Practice Exercises',
+    code: 'ACCT 104',
+    category: 'Bookkeeping Cycle',
+    level: 'Intermediate',
+    instructor: 'Dr. Marcus Brody, CPA',
+    thumbnail: 'https://images.unsplash.com/photo-1454165804606-c3d57bc86b40?auto=format&fit=crop&q=80&w=600',
+    description: 'Allows learners to apply concepts through practical activities, comprehensive case studies, and real-world bookkeeping examples.',
+    totalLessons: 2,
+    completedLessons: 2,
+    topics: [
+      {
+        id: 'tpc-104-1',
+        title: 'Hands-on Accounting Case Study',
+        description: 'Practical journalizing and ledger posting.',
+        lessons: [
+          {
+            id: 'lsn-10',
+            topicId: 'tpc-104-1',
+            title: 'Comprehensive Service Business Practice Problem',
+            description: 'Record 10 sample transactions for a creative agency.',
+            duration: '45 mins',
+            isCompleted: true,
+            videoUrl: 'https://www.youtube.com/embed/8ZKRWAad6Sk',
+            quizId: 'qz-104',
+            downloadIds: ['dl-105'],
+            contentMarkdown: `
+# Service Business Practice Problem
+
+Practice recording startup investments, equipment purchase on account, client billings, and salaries.
+`
+          },
+          {
+            id: 'lsn-11',
+            topicId: 'tpc-104-1',
+            title: 'T-Account Reconciliation Exercise',
+            description: 'Calculate balances and prove Debit/Credit equality.',
+            duration: '35 mins',
+            isCompleted: true,
+            videoUrl: 'https://www.youtube.com/embed/Q_6A1ieXgp4',
+            quizId: 'qz-105',
+            downloadIds: ['dl-106'],
+            contentMarkdown: `
+# T-Account Reconciliation
+
+Ensure total debits across asset and expense accounts equal total credits across liability, equity, and revenue accounts.
+`
+          }
+        ]
+      }
+    ]
+  },
+  {
+    id: 'crs-5',
+    title: 'Adjusting Entries',
+    code: 'ACCT 105',
+    category: 'Financial Statements',
+    level: 'Intermediate',
+    instructor: 'Prof. Eleanor Vance, CPA',
+    thumbnail: 'https://images.unsplash.com/photo-1554224154-26032ffc0d07?auto=format&fit=crop&q=80&w=600',
+    description: 'Introduces adjusting entries and their critical role in accurate financial reporting at period end.',
+    totalLessons: 2,
+    completedLessons: 2,
+    topics: [
+      {
+        id: 'tpc-105-1',
+        title: 'Accruals and Deferrals',
+        description: 'Prepaid expenses, unearned revenues, accrued salaries, and accrued interest.',
+        lessons: [
+          {
+            id: 'lsn-12',
+            topicId: 'tpc-105-1',
+            title: 'Adjusting for Prepayments & Deferrals',
+            description: 'Convert balance sheet assets into income statement expenses.',
+            duration: '30 mins',
+            isCompleted: true,
+            videoUrl: 'https://www.youtube.com/embed/VhwZ9t2b3Zk',
+            quizId: 'qz-106',
+            downloadIds: ['dl-107'],
+            contentMarkdown: `
+# Adjusting Entries: Deferrals
+
+Cash was paid in advance, but the benefit is recognized over time (e.g. Prepaid Insurance).
+`
+          },
+          {
+            id: 'lsn-13',
+            topicId: 'tpc-105-1',
+            title: 'Accrued Revenues & Expenses',
+            description: 'Recording expenses incurred before cash payment.',
+            duration: '35 mins',
+            isCompleted: true,
+            videoUrl: 'https://www.youtube.com/embed/Q_6A1ieXgp4',
+            quizId: 'qz-106',
+            downloadIds: ['dl-107'],
+            contentMarkdown: `
+# Adjusting Entries: Accruals
+
+Revenues earned or expenses incurred before cash is exchanged (e.g. Accrued Salaries).
+`
+          }
+        ]
+      }
+    ]
+  },
+  {
+    id: 'crs-6',
+    title: 'Financial Statements',
     code: 'ACCT 103',
     category: 'Financial Statements',
     level: 'Advanced',
     instructor: 'Prof. Eleanor Vance, CPA',
-    thumbnail: 'https://images.unsplash.com/photo-1590283603385-17ffb3a7f29f?auto=format&fit=crop&q=80&w=600',
-    description: 'Construct Income Statement, Statement of Owner\'s Equity, Balance Sheet, and Statement of Cash Flows with practice ledger data.',
-    totalLessons: 1,
-    completedLessons: 1,
+    thumbnail: 'https://images.unsplash.com/photo-1526304640581-d334cdbbf45e?auto=format&fit=crop&q=80&w=600',
+    description: 'Preparation of the income statement, balance sheet, and other basic financial reports.',
+    totalLessons: 2,
+    completedLessons: 2,
     topics: [
       {
         id: 'tpc-103-1',
@@ -227,6 +391,7 @@ Sum of Debits must equal Sum of Credits.
             description: 'Revenues minus Expenses equal Net Income or Loss.',
             duration: '30 mins',
             isCompleted: true,
+            videoUrl: 'https://www.youtube.com/embed/0--AvwZabIQ',
             quizId: 'qz-107',
             downloadIds: ['dl-108'],
             contentMarkdown: `
@@ -237,6 +402,22 @@ $$\\text{Net Income} = \\text{Total Revenues} - \\text{Total Expenses}$$
 
 ### Statement of Owner's Equity:
 $$\\text{Ending Equity} = \\text{Beginning Equity} + \\text{Owner Investments} + \\text{Net Income} - \\text{Owner Withdrawals}$$
+`
+          },
+          {
+            id: 'lsn-14',
+            topicId: 'tpc-103-1',
+            title: 'Preparing the Classified Balance Sheet',
+            description: 'Assets, Liabilities, and Equity presentation in formal accounting format.',
+            duration: '40 mins',
+            isCompleted: true,
+            videoUrl: 'https://www.youtube.com/embed/Q_6A1ieXgp4',
+            quizId: 'qz-107',
+            downloadIds: ['dl-108'],
+            contentMarkdown: `
+# The Classified Balance Sheet
+
+Presents Current vs Non-Current Assets and Current vs Non-Current Liabilities.
 `
           }
         ]
@@ -443,7 +624,7 @@ export const initialVideos: VideoLesson[] = [
     title: 'Mastering Debits & Credits (The T-Account Method)',
     topic: 'Bookkeeping Cycle',
     duration: '18:50',
-    videoUrl: 'https://www.youtube.com/embed/V3Nl3z2B9zU',
+    videoUrl: 'https://www.youtube.com/embed/VhwZ9t2b3Zk',
     thumbnailUrl: 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?auto=format&fit=crop&q=80&w=500',
     description: 'Learn how to visualize transaction movements using T-Accounts and avoid common debit/credit reversal mistakes.',
     keyTakeaways: [
@@ -457,7 +638,7 @@ export const initialVideos: VideoLesson[] = [
     title: 'How to Prepare a Trial Balance & Locate Errors',
     topic: 'Trial Balance & Adjustments',
     duration: '12:10',
-    videoUrl: 'https://www.youtube.com/embed/yYX4BVQSqbo',
+    videoUrl: 'https://www.youtube.com/embed/8ZKRWAad6Sk',
     thumbnailUrl: 'https://images.unsplash.com/photo-1590283603385-17ffb3a7f29f?auto=format&fit=crop&q=80&w=500',
     description: 'Troubleshooting out-of-balance trial balances, transposition errors, and slide errors.',
     keyTakeaways: [

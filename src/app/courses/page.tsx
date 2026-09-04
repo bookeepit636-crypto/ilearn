@@ -53,75 +53,17 @@ export default function CoursesPage() {
     }
   };
 
-  // Exact 6 course card mock definitions matching screenshot titles and percentages
-  const screenshotCourses = [
-    {
-      id: 'crs-1',
-      title: 'Bookkeeping Cycle',
-      description: 'Provides a step-by-step overview of the complete bookkeeping process.',
-      progressPct: 65,
-      image: 'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?auto=format&fit=crop&q=80&w=600',
-      category: 'Bookkeeping Cycle'
-    },
-    {
-      id: 'crs-2',
-      title: 'Basic Accounting Principles',
-      description: 'Introduces the basic concepts, rules, and accounting equation.',
-      progressPct: 100,
-      image: 'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?auto=format&fit=crop&q=80&w=600',
-      category: 'Basic Accounting Principles'
-    },
-    {
-      id: 'crs-[#0077b6]',
-      title: 'Introduction to Bookkeeping',
-      description: 'Covers the fundamentals, purpose, and importance of bookkeeping.',
-      progressPct: 70,
-      image: 'https://images.unsplash.com/photo-1590283603385-17ffb3a7f29f?auto=format&fit=crop&q=80&w=600',
-      category: 'Basic Accounting Principles'
-    },
-    {
-      id: 'crs-4',
-      title: 'Practice Exercises',
-      description: 'Allows learners to apply concepts through practical activities and examples.',
-      progressPct: 95,
-      image: 'https://images.unsplash.com/photo-1454165804606-c3d57bc86b40?auto=format&fit=crop&q=80&w=600',
-      category: 'Bookkeeping Cycle'
-    },
-    {
-      id: 'crs-5',
-      title: 'Adjusting Entries',
-      description: 'Introduces adjusting entries and their role in accurate financial reporting.',
-      progressPct: 60,
-      image: 'https://images.unsplash.com/photo-1554224154-26032ffc0d07?auto=format&fit=crop&q=80&w=600',
-      category: 'Financial Statements'
-    },
-    {
-      id: 'crs-6',
-      title: 'Financial Statements',
-      description: 'Preparation of the income statement, balance sheet, and other basic financial reports.',
-      progressPct: 50,
-      image: 'https://images.unsplash.com/photo-1526304640581-d334cdbbf45e?auto=format&fit=crop&q=80&w=600',
-      category: 'Financial Statements'
-    }
-  ];
-
-  // Combine screenshot baseline courses with any dynamic courses added by admin
-  const allStudentCourses: Array<{
-    id: string;
-    title: string;
-    description: string;
-    progressPct: number;
-    image: string;
-    category: string;
-    rawCourse?: Course;
-  }> = [
-    ...courses.map((c) => {
-      const actualTotal = c.topics && c.topics.length > 0
-        ? c.topics.reduce((sum, t) => sum + (t.lessons ? t.lessons.length : 0), 0)
-        : (c.totalLessons || 1);
-      const actualCompleted = c.topics && c.topics.length > 0
-        ? c.topics.reduce((sum, t) => sum + (t.lessons ? t.lessons.filter((l) => l.isCompleted).length : 0), 0)
-        : (c.completedLessons || 0);
+  // Derive student courses dynamically with true completion percentages calculated directly from their lessons
+  const allStudentCourses = courses
+    .map((c) => {
+      const actualTotal =
+        c.topics && c.topics.length > 0
+          ? c.topics.reduce((sum, t) => sum + (t.lessons ? t.lessons.length : 0), 0)
+          : (c.totalLessons || 1);
+      const actualCompleted =
+        c.topics && c.topics.length > 0
+          ? c.topics.reduce((sum, t) => sum + (t.lessons ? t.lessons.filter((l) => l.isCompleted).length : 0), 0)
+          : (c.completedLessons || 0);
       const pct = Math.round((actualCompleted / (actualTotal || 1)) * 100);
 
       return {
@@ -133,13 +75,17 @@ export default function CoursesPage() {
         category: c.category,
         rawCourse: c
       };
-    }),
-    ...screenshotCourses.filter((sc) => !courses.some((c) => c.title.toLowerCase() === sc.title.toLowerCase()))
-  ];
+    })
+    .sort((a, b) => {
+      if (sortOrder === 'progress') {
+        return b.progressPct - a.progressPct;
+      }
+      return 0;
+    });
 
   return (
     <div className="space-y-8 animate-in fade-in duration-300">
-      {/* Page Section Title & Controls Bar Matching Screenshot */}
+      {/* Page Section Title & Controls Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-2xl font-black text-slate-800 tracking-tight">
@@ -153,8 +99,11 @@ export default function CoursesPage() {
         {/* Sort & See All Controls */}
         <div className="flex items-center gap-3">
           <div className="relative">
-            <button className="px-4 py-1.5 rounded-full bg-white border border-slate-200 text-xs font-bold text-slate-600 hover:text-slate-900 flex items-center gap-1.5 shadow-2xs">
-              <span>Sort by <strong className="text-[#0077b6]">Latest</strong></span>
+            <button
+              onClick={() => setSortOrder((prev) => (prev === 'latest' ? 'progress' : 'latest'))}
+              className="px-4 py-1.5 rounded-full bg-white border border-slate-200 text-xs font-bold text-slate-600 hover:text-slate-900 flex items-center gap-1.5 shadow-2xs transition active:scale-95"
+            >
+              <span>Sort by <strong className="text-[#0077b6] capitalize">{sortOrder}</strong></span>
               <ChevronDown className="w-3.5 h-3.5 text-[#0077b6]" />
             </button>
           </div>
@@ -165,14 +114,10 @@ export default function CoursesPage() {
         </div>
       </div>
 
-      {/* 3-Column Course Grid Matching Screenshot Layout */}
+      {/* 3-Column Course Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {allStudentCourses.map((crs) => {
-          // Find matching dynamic course from context if available
-          const dynamicCourse =
-            crs.rawCourse ||
-            courses.find((c) => c.title.toLowerCase().includes(crs.title.toLowerCase())) ||
-            courses[0];
+          const dynamicCourse = crs.rawCourse;
 
           return (
             <div
