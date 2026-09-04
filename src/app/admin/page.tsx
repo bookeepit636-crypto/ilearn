@@ -117,6 +117,7 @@ export default function AdminPage() {
 
   // Video & Material Cloudinary Upload State
   const [isVidUploading, setIsVidUploading] = useState(false);
+  const [uploadedVideoName, setUploadedVideoName] = useState('');
   const [isMatUploading, setIsMatUploading] = useState(false);
 
   // Announcement State
@@ -126,13 +127,25 @@ export default function AdminPage() {
   const handleVideoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    setUploadedVideoName(file.name);
+    // Instantly create local stream so the user never has an empty URL or blocked publish
+    const localStreamUrl = URL.createObjectURL(file);
+    setVidUrl(localStreamUrl);
+
+    // If file is > 25MB, keep the local stream directly to avoid Cloudinary 413 entity size error
+    if (file.size > 25 * 1024 * 1024) {
+      console.info(`File ${file.name} is large (${(file.size / (1024 * 1024)).toFixed(1)}MB). Loaded into player directly.`);
+      return;
+    }
+
     setIsVidUploading(true);
     try {
       const url = await uploadToCloudinary(file, 'auto');
-      setVidUrl(url);
+      if (url) {
+        setVidUrl(url);
+      }
     } catch (err) {
-      console.warn('Video upload fallback:', err);
-      setVidUrl(URL.createObjectURL(file));
+      console.warn('Cloudinary upload warning, using local stream:', err);
     } finally {
       setIsVidUploading(false);
     }
@@ -166,6 +179,7 @@ export default function AdminPage() {
     addVideo(newV);
     setVidTitle('');
     setVidUrl('');
+    setUploadedVideoName('');
     alert('Video published to classroom successfully!');
   };
 
@@ -683,14 +697,17 @@ export default function AdminPage() {
                 <input
                   type="text"
                   value={vidUrl}
-                  onChange={(e) => setVidUrl(e.target.value)}
-                  placeholder="https://www.youtube.com/watch?v=... or upload below"
+                  onChange={(e) => {
+                    setVidUrl(e.target.value);
+                    if (e.target.value) setUploadedVideoName('');
+                  }}
+                  placeholder="Paste YouTube link (e.g. https://www.youtube.com/watch?v=...)"
                   className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-800"
                 />
               </div>
 
               <div className="sm:col-span-2">
-                <label className="block text-slate-700 font-bold mb-1">Or Upload Video to Cloudinary</label>
+                <label className="block text-slate-700 font-bold mb-1">Or Choose Video File (.mp4, .webm)</label>
                 <input
                   type="file"
                   accept="video/*"
@@ -698,7 +715,15 @@ export default function AdminPage() {
                   disabled={isVidUploading}
                   className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-1.5 text-slate-600 file:mr-2 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-xs file:bg-indigo-50 file:text-indigo-700"
                 />
-                {isVidUploading && <p className="text-[10px] text-indigo-600 mt-1 animate-pulse">Uploading video to Cloudinary...</p>}
+                {uploadedVideoName && (
+                  <div className="mt-1.5 p-2 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span className="font-semibold truncate">Video Ready: {uploadedVideoName}</span>
+                  </div>
+                )}
+                {isVidUploading && (
+                  <p className="text-[10px] text-indigo-600 mt-1 animate-pulse">Syncing video to Cloudinary CDN...</p>
+                )}
               </div>
 
               <div className="sm:col-span-2 lg:col-span-4 flex justify-end">

@@ -256,7 +256,7 @@ export const Navbar: React.FC = () => {
 
       {/* Date Banner */}
       <div className="flex justify-end text-xs text-slate-400 font-medium">
-        <span className="flex items-center gap-1.5">
+        <span suppressHydrationWarning className="flex items-center gap-1.5">
           <Calendar className="w-3.5 h-3.5 text-slate-400" />
           {todayDateFormatted}
         </span>
