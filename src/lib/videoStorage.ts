@@ -105,3 +105,78 @@ export function formatYouTubeEmbedUrl(url: string): string {
   }
   return url;
 }
+
+/**
+ * Formats duration in seconds into H:MM:SS or M:SS
+ */
+export function formatDuration(seconds: number): string {
+  if (isNaN(seconds) || seconds <= 0) return '0:00';
+  const hrs = Math.floor(seconds / 3600);
+  const mins = Math.floor((seconds % 3600) / 60);
+  const secs = Math.floor(seconds % 60);
+  if (hrs > 0) {
+    return `${hrs}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  }
+  return `${mins}:${secs.toString().padStart(2, '0')}`;
+}
+
+/**
+ * Extracts a frame from a local video file to use as thumbnail
+ */
+export function generateVideoThumbnail(file: File): Promise<string> {
+  return new Promise((resolve) => {
+    if (typeof window === 'undefined') {
+      resolve('https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?auto=format&fit=crop&q=80&w=500');
+      return;
+    }
+    const video = document.createElement('video');
+    video.preload = 'metadata';
+    video.muted = true;
+    video.playsInline = true;
+    const url = URL.createObjectURL(file);
+    video.src = url;
+
+    let finished = false;
+    const cleanup = () => {
+      if (!finished) {
+        finished = true;
+        URL.revokeObjectURL(url);
+      }
+    };
+
+    video.onloadedmetadata = () => {
+      video.currentTime = Math.min(1.5, (video.duration || 10) * 0.1);
+    };
+
+    video.onseeked = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.min(video.videoWidth || 640, 640);
+        canvas.height = Math.min(video.videoHeight || 360, 360);
+        const ctx = canvas.getContext('2d');
+        if (ctx && canvas.width > 0 && canvas.height > 0) {
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+          cleanup();
+          resolve(dataUrl);
+          return;
+        }
+      } catch (err) {
+        console.warn('Failed to capture frame from video:', err);
+      }
+      cleanup();
+      resolve('https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?auto=format&fit=crop&q=80&w=500');
+    };
+
+    video.onerror = () => {
+      cleanup();
+      resolve('https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?auto=format&fit=crop&q=80&w=500');
+    };
+
+    setTimeout(() => {
+      cleanup();
+      resolve('https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?auto=format&fit=crop&q=80&w=500');
+    }, 4000);
+  });
+}
+

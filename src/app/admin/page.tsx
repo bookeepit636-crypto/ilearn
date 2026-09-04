@@ -28,7 +28,7 @@ import {
 import { useApp } from '@/context/AppContext';
 import { Course, DownloadableMaterial, Lesson, Quiz, QuizQuestion, Topic, VideoLesson } from '@/types';
 import { uploadToCloudinary } from '@/lib/cloudinary';
-import { saveVideoBlob, deleteVideoBlob } from '@/lib/videoStorage';
+import { saveVideoBlob, deleteVideoBlob, generateVideoThumbnail } from '@/lib/videoStorage';
 
 export default function AdminPage() {
   const {
@@ -120,6 +120,7 @@ export default function AdminPage() {
   const [isVidUploading, setIsVidUploading] = useState(false);
   const [uploadedVideoName, setUploadedVideoName] = useState('');
   const [uploadedVideoFile, setUploadedVideoFile] = useState<File | null>(null);
+  const [uploadedVideoThumb, setUploadedVideoThumb] = useState<string>('');
   const [lessonVideoFile, setLessonVideoFile] = useState<File | null>(null);
   const [isMatUploading, setIsMatUploading] = useState(false);
 
@@ -132,6 +133,15 @@ export default function AdminPage() {
     if (!file) return;
     setUploadedVideoFile(file);
     setUploadedVideoName(file.name);
+
+    // Auto extract real thumbnail frame
+    try {
+      const thumb = await generateVideoThumbnail(file);
+      setUploadedVideoThumb(thumb);
+    } catch {
+      // ignore
+    }
+
     // Instantly create local stream so the user never has an empty URL or blocked publish
     const localStreamUrl = URL.createObjectURL(file);
     setVidUrl(localStreamUrl);
@@ -175,7 +185,9 @@ export default function AdminPage() {
       topic: vidTopic,
       duration: vidDuration || '15:00',
       videoUrl: embedUrl,
-      thumbnailUrl: 'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?auto=format&fit=crop&q=80&w=500',
+      thumbnailUrl:
+        uploadedVideoThumb ||
+        'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?auto=format&fit=crop&q=80&w=500',
       description: 'Instructional bookkeeping lecture prepared by ' + user.name,
       keyTakeaways: ['Key takeaway for ' + vidTitle, 'Practical bookkeeping applications'],
       viewsCount: 0
@@ -190,6 +202,7 @@ export default function AdminPage() {
     setVidUrl('');
     setUploadedVideoName('');
     setUploadedVideoFile(null);
+    setUploadedVideoThumb('');
     alert('Video published to classroom successfully!');
   };
 
