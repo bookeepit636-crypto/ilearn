@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   CheckCircle2,
   Clock,
@@ -13,6 +13,8 @@ import {
 import { useApp } from '@/context/AppContext';
 import { VideoLesson } from '@/types';
 import { uploadToCloudinary } from '@/lib/cloudinary';
+import { VideoPlayer } from '@/components/video/VideoPlayer';
+import { saveVideoBlob } from '@/lib/videoStorage';
 
 export default function VideosPage() {
   const { videos, user, addVideo, deleteVideo } = useApp();
@@ -27,6 +29,19 @@ export default function VideosPage() {
   const [newUrl, setNewUrl] = useState('');
   const [newDescription, setNewDescription] = useState('');
   const [uploadingFile, setUploadingFile] = useState(false);
+  const [selectedRawFile, setSelectedRawFile] = useState<File | null>(null);
+
+  // Sync activeVideo when videos list updates from localStorage
+  useEffect(() => {
+    if (!activeVideo && videos.length > 0) {
+      setActiveVideo(videos[0]);
+    } else if (activeVideo) {
+      const match = videos.find((v) => v.id === activeVideo.id);
+      if (match && match !== activeVideo) {
+        setActiveVideo(match);
+      }
+    }
+  }, [videos, activeVideo]);
 
   const topics = ['All', 'Basic Accounting Principles', 'Bookkeeping Cycle', 'Trial Balance & Adjustments'];
 
@@ -37,19 +52,20 @@ export default function VideosPage() {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    setSelectedRawFile(file);
     setUploadingFile(true);
     try {
       const url = await uploadToCloudinary(file, 'auto');
       setNewUrl(url);
     } catch (err) {
-      console.warn('Video upload fallback:', err);
+      console.warn('Video upload fallback to local stream:', err);
       setNewUrl(URL.createObjectURL(file));
     } finally {
       setUploadingFile(false);
     }
   };
 
-  const handleAddVideo = (e: React.FormEvent) => {
+  const handleAddVideo = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTitle || !newUrl) return;
 
@@ -74,12 +90,17 @@ export default function VideosPage() {
       viewsCount: 1
     };
 
+    if (selectedRawFile) {
+      await saveVideoBlob(newVid.id, selectedRawFile);
+    }
+
     addVideo(newVid);
     setActiveVideo(newVid);
     setIsAddModalOpen(false);
     setNewTitle('');
     setNewUrl('');
     setNewDescription('');
+    setSelectedRawFile(null);
   };
 
   return (
@@ -131,11 +152,11 @@ export default function VideosPage() {
           {activeVideo ? (
             <div className="card-theme p-6 rounded-3xl bg-white border border-slate-100 space-y-4">
               <div className="aspect-video w-full rounded-2xl overflow-hidden bg-black border border-slate-200 shadow-md">
-                <iframe
+                <VideoPlayer
                   src={activeVideo.videoUrl}
+                  videoId={activeVideo.id}
                   title={activeVideo.title}
                   className="w-full h-full"
-                  allowFullScreen
                 />
               </div>
 

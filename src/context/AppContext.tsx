@@ -26,6 +26,7 @@ import {
   initialVideos
 } from '@/lib/mockData';
 import { supabaseLogin, supabaseRegister, supabaseLogout } from '@/lib/supabase';
+import { deleteVideoBlob } from '@/lib/videoStorage';
 
 interface AppContextType {
   user: UserProfile;
@@ -470,6 +471,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const deleteVideo = (id: string) => {
     setVideos((prev) => prev.filter((v) => v.id !== id));
+    deleteVideoBlob(id);
   };
 
   const addMaterial = (material: DownloadableMaterial) => {

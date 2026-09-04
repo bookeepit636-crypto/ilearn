@@ -18,6 +18,7 @@ import {
 import { useApp } from '@/context/AppContext';
 import { Course, Lesson } from '@/types';
 import confetti from 'canvas-confetti';
+import { VideoPlayer } from '@/components/video/VideoPlayer';
 
 export default function CoursesPage() {
   const { courses, toggleLessonCompletion } = useApp();
@@ -283,11 +284,11 @@ export default function CoursesPage() {
                           <Video className="w-4 h-4" /> Video Lecture
                         </h4>
                         <div className="aspect-video rounded-2xl overflow-hidden border border-slate-200 shadow-md">
-                          <iframe
+                          <VideoPlayer
                             src={activeLesson.videoUrl}
+                            videoId={activeLesson.id}
                             title={activeLesson.title}
                             className="w-full h-full"
-                            allowFullScreen
                           />
                         </div>
                       </div>

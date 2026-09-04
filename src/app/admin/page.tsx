@@ -28,6 +28,7 @@ import {
 import { useApp } from '@/context/AppContext';
 import { Course, DownloadableMaterial, Lesson, Quiz, QuizQuestion, Topic, VideoLesson } from '@/types';
 import { uploadToCloudinary } from '@/lib/cloudinary';
+import { saveVideoBlob, deleteVideoBlob } from '@/lib/videoStorage';
 
 export default function AdminPage() {
   const {
@@ -118,6 +119,8 @@ export default function AdminPage() {
   // Video & Material Cloudinary Upload State
   const [isVidUploading, setIsVidUploading] = useState(false);
   const [uploadedVideoName, setUploadedVideoName] = useState('');
+  const [uploadedVideoFile, setUploadedVideoFile] = useState<File | null>(null);
+  const [lessonVideoFile, setLessonVideoFile] = useState<File | null>(null);
   const [isMatUploading, setIsMatUploading] = useState(false);
 
   // Announcement State
@@ -127,6 +130,7 @@ export default function AdminPage() {
   const handleVideoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    setUploadedVideoFile(file);
     setUploadedVideoName(file.name);
     // Instantly create local stream so the user never has an empty URL or blocked publish
     const localStreamUrl = URL.createObjectURL(file);
@@ -134,7 +138,7 @@ export default function AdminPage() {
 
     // If file is > 25MB, keep the local stream directly to avoid Cloudinary 413 entity size error
     if (file.size > 25 * 1024 * 1024) {
-      console.info(`File ${file.name} is large (${(file.size / (1024 * 1024)).toFixed(1)}MB). Loaded into player directly.`);
+      console.info(`File ${file.name} is large (${(file.size / (1024 * 1024)).toFixed(1)}MB). Stored locally.`);
       return;
     }
 
@@ -151,7 +155,7 @@ export default function AdminPage() {
     }
   };
 
-  const handleAddVideo = (e: React.FormEvent) => {
+  const handleAddVideo = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!vidTitle || !vidUrl) {
       alert('Please enter a video title and URL or upload a video file.');
@@ -176,10 +180,16 @@ export default function AdminPage() {
       keyTakeaways: ['Key takeaway for ' + vidTitle, 'Practical bookkeeping applications'],
       viewsCount: 0
     };
+
+    if (uploadedVideoFile) {
+      await saveVideoBlob(newV.id, uploadedVideoFile);
+    }
+
     addVideo(newV);
     setVidTitle('');
     setVidUrl('');
     setUploadedVideoName('');
+    setUploadedVideoFile(null);
     alert('Video published to classroom successfully!');
   };
 
@@ -352,17 +362,18 @@ export default function AdminPage() {
   const handleLessonVideoFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    setLessonVideoFile(file);
     try {
       const uploadedUrl = await uploadToCloudinary(file, 'auto');
       setLessonVideoUrl(uploadedUrl);
     } catch (err) {
-      console.warn('Video upload fallback:', err);
+      console.warn('Video upload fallback to local stream:', err);
       setLessonVideoUrl(URL.createObjectURL(file));
     }
   };
 
   // Add Lesson with Text, Video, and Uploaded File Attachments
-  const handleAddLessonToTopic = (topicId: string, e: React.FormEvent) => {
+  const handleAddLessonToTopic = async (topicId: string, e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedCourseForOutline || !lessonTitle) return;
 
@@ -377,6 +388,10 @@ export default function AdminPage() {
       downloadIds: lessonFileUrl ? [`dl-${Date.now()}`] : undefined,
       contentMarkdown: lessonContent || `# ${lessonTitle}\n\nStudy lecture notes and review the attached lesson files below.`
     };
+
+    if (lessonVideoFile) {
+      await saveVideoBlob(newLesson.id, lessonVideoFile);
+    }
 
     const updatedTopics = selectedCourseForOutline.topics.map((tpc) => {
       if (tpc.id !== topicId) return tpc;
@@ -414,6 +429,7 @@ export default function AdminPage() {
   // Delete Lesson from Topic in Outline
   const handleDeleteLesson = (topicId: string, lessonId: string) => {
     if (!selectedCourseForOutline) return;
+    deleteVideoBlob(lessonId);
     const updatedTopics = selectedCourseForOutline.topics.map((tpc) => {
       if (tpc.id !== topicId) return tpc;
       return {
