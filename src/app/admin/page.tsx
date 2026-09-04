@@ -128,11 +128,11 @@ export default function AdminPage() {
     if (!file) return;
     setIsVidUploading(true);
     try {
-      const url = await uploadToCloudinary(file, 'video');
+      const url = await uploadToCloudinary(file, 'auto');
       setVidUrl(url);
     } catch (err) {
       console.warn('Video upload fallback:', err);
-      alert('Cloudinary upload warning. Using fallback URL.');
+      setVidUrl(URL.createObjectURL(file));
     } finally {
       setIsVidUploading(false);
     }
@@ -147,6 +147,9 @@ export default function AdminPage() {
     let embedUrl = vidUrl;
     if (vidUrl.includes('youtube.com/watch?v=')) {
       const vidId = vidUrl.split('watch?v=')[1]?.split('&')[0];
+      embedUrl = `https://www.youtube.com/embed/${vidId}`;
+    } else if (vidUrl.includes('youtu.be/')) {
+      const vidId = vidUrl.split('youtu.be/')[1]?.split('?')[0];
       embedUrl = `https://www.youtube.com/embed/${vidId}`;
     }
     const newV: VideoLesson = {
