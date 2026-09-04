@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import {
   BookOpen,
   Calendar,
@@ -20,8 +20,10 @@ import { useApp } from '@/context/AppContext';
 
 export const Navbar: React.FC = () => {
   const pathname = usePathname();
+  const router = useRouter();
   const {
     user,
+    adminTab,
     notifications,
     setIsSearchOpen,
     setIsNotificationDrawerOpen,
@@ -68,8 +70,18 @@ export const Navbar: React.FC = () => {
         return { breadcrumb: 'Settings', title: 'ACCOUNT SETTINGS' };
       case '/help':
         return { breadcrumb: 'Help & Support', title: 'HELP & SUPPORT' };
-      case '/admin':
-        return { breadcrumb: 'Admin Portal', title: 'ADMIN CONTROL CENTER' };
+      case '/admin': {
+        const tabLabels: Record<string, string> = {
+          courses: 'Manage Courses',
+          videos: 'Video Library',
+          materials: 'Templates & Files',
+          quizzes: 'Quiz & Exam Builder',
+          users: 'Student Accounts',
+          announcements: 'Announcements'
+        };
+        const currentLabel = tabLabels[adminTab] || 'Control Center';
+        return { breadcrumb: currentLabel, title: `ADMIN CONTROL • ${currentLabel.toUpperCase()}` };
+      }
       default:
         return { breadcrumb: 'Dashboard', title: 'DASHBOARD' };
     }
@@ -153,7 +165,15 @@ export const Navbar: React.FC = () => {
 
           {/* Student vs Admin Switcher */}
           <button
-            onClick={toggleRole}
+            onClick={() => {
+              if (user.role === 'student') {
+                toggleRole();
+                router.push('/admin');
+              } else {
+                toggleRole();
+                router.push('/');
+              }
+            }}
             className={`p-2 sm:px-3 sm:py-1.5 rounded-full text-xs font-bold transition flex items-center gap-1 border ${
               user.role === 'admin'
                 ? 'bg-indigo-600 text-white border-indigo-500'

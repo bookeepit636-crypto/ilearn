@@ -1,10 +1,12 @@
 'use client';
 
 import React, { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { BookOpen, GraduationCap, Lock, Mail, ShieldCheck, User, UserPlus } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
 
 export const AuthScreen: React.FC = () => {
+  const router = useRouter();
   const { login, register } = useApp();
   const [mode, setMode] = useState<'login' | 'register'>('login');
 
@@ -21,6 +23,13 @@ export const AuthScreen: React.FC = () => {
     const res = login(email, password);
     if (!res.success) {
       setErrorMsg(res.error || 'Invalid credentials');
+    } else {
+      const trimmed = email.trim().toLowerCase();
+      if (trimmed.includes('admin') || trimmed === 'admin@bookkeep-it.edu' || trimmed === 'admin@ilearn.edu') {
+        router.push('/admin');
+      } else {
+        router.push('/');
+      }
     }
   };
 

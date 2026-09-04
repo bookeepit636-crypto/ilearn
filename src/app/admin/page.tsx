@@ -47,12 +47,10 @@ export default function AdminPage() {
     addMaterial,
     deleteMaterial,
     addQuiz,
-    broadcastAnnouncement
+    broadcastAnnouncement,
+    adminTab,
+    setAdminTab
   } = useApp();
-
-  const [adminTab, setAdminTab] = useState<
-    'users' | 'courses' | 'videos' | 'materials' | 'quizzes' | 'announcements'
-  >('courses');
 
   // Course Form State
   const [courseTitle, setCourseTitle] = useState('');

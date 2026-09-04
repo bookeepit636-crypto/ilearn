@@ -68,7 +68,11 @@ interface AppContextType {
   addQuiz: (quiz: Quiz) => void;
   broadcastAnnouncement: (title: string, message: string) => void;
   resetAllData: () => void;
+  adminTab: AdminTabType;
+  setAdminTab: (tab: AdminTabType) => void;
 }
+
+export type AdminTabType = 'users' | 'courses' | 'videos' | 'materials' | 'quizzes' | 'announcements';
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
@@ -131,6 +135,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isNotificationDrawerOpen, setIsNotificationDrawerOpen] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+  const [adminTab, setAdminTab] = useState<AdminTabType>('courses');
   const [isLoaded, setIsLoaded] = useState(false);
 
   // Load state from LocalStorage on mount
@@ -545,7 +550,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         deleteMaterial,
         addQuiz,
         broadcastAnnouncement,
-        resetAllData
+        resetAllData,
+        adminTab,
+        setAdminTab
       }}
     >
       {children}
