@@ -1,26 +1,95 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
+@layer base {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --bg-main: #f8fafc;
+    --sidebar-gradient-from: #00b4d8;
+    --sidebar-gradient-via: #0077b6;
+    --sidebar-gradient-to: #023e8a;
+    --card-bg: #ffffff;
+    --text-navy: #0f172a;
+    --text-muted: #64748b;
+    --accent-blue: #0077b6;
+    --accent-cyan: #00b4d8;
+  }
+
+  body {
+    background-color: var(--bg-main);
+    color: var(--text-navy);
+    font-family: var(--font-geist-sans), system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    overflow-x: hidden;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* Sidebar theme gradient matching screenshot */
+.sidebar-gradient {
+  background: linear-gradient(180deg, #2ac3eb 0%, #1e83db 45%, #005bb7 100%);
+}
+
+/* Active navigation item pill */
+.nav-pill-active {
+  background-color: #ffffff;
+  color: #1e83db;
+  font-weight: 800;
+  border-radius: 9999px;
+  box-shadow: 0 10px 25px -5px rgba(0, 80, 180, 0.25);
+}
+
+/* Card aesthetics matching screenshot */
+.card-theme {
+  background-color: #ffffff;
+  border-radius: 1.5rem;
+  border: 1px solid #f1f5f9;
+  box-shadow: 0 4px 20px -2px rgba(148, 163, 184, 0.08);
+  transition: all 0.3s ease;
+}
+
+.card-theme:hover {
+  box-shadow: 0 12px 30px -4px rgba(0, 119, 182, 0.15);
+  transform: translateY(-2px);
+}
+
+/* Floating circle arrow button */
+.floating-arrow-btn {
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 9999px;
+  background-color: #00b4d8;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 6px 16px rgba(0, 180, 216, 0.4);
+  transition: all 0.2s ease;
+}
+
+.floating-arrow-btn:hover {
+  background-color: #0077b6;
+  transform: scale(1.1);
+}
+
+/* Progress pill badge */
+.progress-pill {
+  background: linear-gradient(90deg, #48cae4 0%, #0077b6 100%);
+  color: #ffffff;
+  font-weight: 700;
+  border-radius: 9999px;
+  padding: 0.25rem 0.85rem;
+  font-size: 0.725rem;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
 }
