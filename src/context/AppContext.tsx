@@ -201,7 +201,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             const existing = parsed.videos.find((v: VideoLesson) => v.id === initVid.id);
             return existing ? { ...existing, videoUrl: initVid.videoUrl } : initVid;
           });
-          setVideos(updatedVideos);
+          const customVideos = parsed.videos.filter(
+            (pv: VideoLesson) => !initialVideos.some((iv) => iv.id === pv.id)
+          );
+          setVideos([...customVideos, ...updatedVideos]);
         }
         if (parsed.schedules) setSchedules(parsed.schedules);
         if (parsed.notifications) setNotifications(parsed.notifications);
