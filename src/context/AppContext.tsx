@@ -72,7 +72,22 @@ interface AppContextType {
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
-const LOCAL_STORAGE_KEY = 'bookkeep_it_state_v3';
+const LOCAL_STORAGE_KEY = 'bookkeep_it_state_v4';
+
+export const normalizeCourse = (crs: Course): Course => {
+  const actualTotal = crs.topics && crs.topics.length > 0
+    ? crs.topics.reduce((sum, t) => sum + (t.lessons ? t.lessons.length : 0), 0)
+    : (crs.totalLessons || 1);
+  const actualCompleted = crs.topics && crs.topics.length > 0
+    ? crs.topics.reduce((sum, t) => sum + (t.lessons ? t.lessons.filter((l) => l.isCompleted).length : 0), 0)
+    : (crs.completedLessons || 0);
+
+  return {
+    ...crs,
+    totalLessons: actualTotal > 0 ? actualTotal : 1,
+    completedLessons: actualCompleted
+  };
+};
 
 // Pre-configured fixed admin profile
 export const fixedAdminProfile: UserAccount = {
@@ -103,7 +118,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [accounts, setAccounts] = useState<UserAccount[]>([initialStudentAccount, fixedAdminProfile]);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(true);
 
-  const [courses, setCourses] = useState<Course[]>(initialCourses);
+  const [courses, setCourses] = useState<Course[]>(() => initialCourses.map(normalizeCourse));
   const [quizzes, setQuizzes] = useState<Quiz[]>(initialQuizzes);
   const [submissions, setSubmissions] = useState<QuizSubmission[]>(initialSubmissions);
   const [materials, setMaterials] = useState<DownloadableMaterial[]>(initialMaterials);
@@ -121,13 +136,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Load state from LocalStorage on mount
   useEffect(() => {
     try {
-      const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
+      const saved = localStorage.getItem(LOCAL_STORAGE_KEY) || localStorage.getItem('bookkeep_it_state_v3');
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (parsed.user) setUser(parsed.user);
+        if (parsed.courses) {
+          const normalizedCourses = parsed.courses.map(normalizeCourse);
+          setCourses(normalizedCourses);
+          const totalDone = normalizedCourses.reduce(
+            (acc: number, c: Course) => acc + (c.completedLessons || 0),
+            0
+          );
+          if (parsed.user) {
+            setUser({
+              ...parsed.user,
+              completedLessonsCount: totalDone
+            });
+          }
+        } else if (parsed.user) {
+          setUser(parsed.user);
+        }
         if (parsed.accounts) setAccounts(parsed.accounts);
         if (typeof parsed.isAuthenticated === 'boolean') setIsAuthenticated(parsed.isAuthenticated);
-        if (parsed.courses) setCourses(parsed.courses);
         if (parsed.quizzes) setQuizzes(parsed.quizzes);
         if (parsed.submissions) setSubmissions(parsed.submissions);
         if (parsed.materials) setMaterials(parsed.materials);
@@ -296,35 +325,48 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const toggleLessonCompletion = (courseId: string, lessonId: string) => {
-    setCourses((prevCourses) =>
-      prevCourses.map((crs) => {
+    setCourses((prevCourses) => {
+      const updatedCourses = prevCourses.map((crs) => {
         if (crs.id !== courseId) return crs;
-        let completedCountDelta = 0;
 
         const updatedTopics = crs.topics.map((tpc) => ({
           ...tpc,
           lessons: tpc.lessons.map((lsn) => {
             if (lsn.id !== lessonId) return lsn;
-            const nextCompleted = !lsn.isCompleted;
-            completedCountDelta = nextCompleted ? 1 : -1;
-            return { ...lsn, isCompleted: nextCompleted };
+            return { ...lsn, isCompleted: !lsn.isCompleted };
           })
         }));
 
-        const newCompleted = Math.max(0, crs.completedLessons + completedCountDelta);
+        const actualTotal = updatedTopics.reduce(
+          (sum, t) => sum + (t.lessons ? t.lessons.length : 0),
+          0
+        );
+        const actualCompleted = updatedTopics.reduce(
+          (sum, t) => sum + (t.lessons ? t.lessons.filter((l) => l.isCompleted).length : 0),
+          0
+        );
 
         return {
           ...crs,
-          completedLessons: newCompleted,
+          totalLessons: actualTotal > 0 ? actualTotal : (crs.totalLessons || 1),
+          completedLessons: actualCompleted,
           topics: updatedTopics
         };
-      })
-    );
+      });
 
-    setUser((prev) => ({
-      ...prev,
-      completedLessonsCount: prev.completedLessonsCount + 1
-    }));
+      // Synchronize overall user completed lessons count accurately
+      const totalDone = updatedCourses.reduce(
+        (sum, c) => sum + (c.completedLessons || 0),
+        0
+      );
+
+      setUser((prev) => ({
+        ...prev,
+        completedLessonsCount: totalDone
+      }));
+
+      return updatedCourses;
+    });
   };
 
   const addScheduleItem = (item: Omit<ScheduleItem, 'id' | 'isCompleted'>) => {

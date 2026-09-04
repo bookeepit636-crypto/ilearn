@@ -9,7 +9,7 @@ export const initialProfile: UserProfile = {
   bio: 'Second-year Accounting Student passionate about mastering automated bookkeeping and financial analysis.',
   studentId: 'BK-2026-8941',
   program: 'Bachelor of Science in Accountancy',
-  completedLessonsCount: 14,
+  completedLessonsCount: 6,
   totalQuizzesTaken: 8,
   averageQuizScore: 92,
   studyHours: 34.5,
@@ -26,8 +26,8 @@ export const initialCourses: Course[] = [
     instructor: 'Prof. Eleanor Vance, CPA',
     thumbnail: 'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?auto=format&fit=crop&q=80&w=600',
     description: 'Master the fundamental rules of accounting: Double-entry bookkeeping, the Accounting Equation (Assets = Liabilities + Equity), and core GAAP assumptions.',
-    totalLessons: 6,
-    completedLessons: 5,
+    totalLessons: 3,
+    completedLessons: 3,
     topics: [
       {
         id: 'tpc-101-1',
@@ -130,8 +130,8 @@ Under **Cash Basis Accounting**:
     instructor: 'Dr. Marcus Brody, CPA',
     thumbnail: 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?auto=format&fit=crop&q=80&w=600',
     description: 'Step-by-step guide from analyzing source documents, recording General Journal entries, posting to General Ledger, preparing Unadjusted Trial Balance, to Adjusting & Closing entries.',
-    totalLessons: 8,
-    completedLessons: 6,
+    totalLessons: 3,
+    completedLessons: 2,
     topics: [
       {
         id: 'tpc-102-1',
@@ -212,8 +212,8 @@ Sum of Debits must equal Sum of Credits.
     instructor: 'Prof. Eleanor Vance, CPA',
     thumbnail: 'https://images.unsplash.com/photo-1590283603385-17ffb3a7f29f?auto=format&fit=crop&q=80&w=600',
     description: 'Construct Income Statement, Statement of Owner\'s Equity, Balance Sheet, and Statement of Cash Flows with practice ledger data.',
-    totalLessons: 5,
-    completedLessons: 3,
+    totalLessons: 1,
+    completedLessons: 1,
     topics: [
       {
         id: 'tpc-103-1',

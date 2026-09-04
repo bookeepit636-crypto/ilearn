@@ -21,21 +21,34 @@ import confetti from 'canvas-confetti';
 
 export default function CoursesPage() {
   const { courses, toggleLessonCompletion } = useApp();
-  const [activeCourse, setActiveCourse] = useState<Course | null>(null);
-  const [activeLesson, setActiveLesson] = useState<Lesson | null>(null);
+  const [selectedCourseId, setSelectedCourseId] = useState<string | null>(null);
+  const [selectedLessonId, setSelectedLessonId] = useState<string | null>(null);
   const [sortOrder, setSortOrder] = useState<'latest' | 'progress'>('latest');
+
+  // Dynamically derived from global courses state so updates reflect immediately
+  const activeCourse = selectedCourseId
+    ? courses.find((c) => c.id === selectedCourseId) || null
+    : null;
+
+  const activeLesson = activeCourse
+    ? activeCourse.topics.flatMap((t) => t.lessons).find((l) => l.id === selectedLessonId) ||
+      activeCourse.topics[0]?.lessons[0] ||
+      null
+    : null;
 
   const handleToggleLessonCompletion = (crsId: string, lsnId: string) => {
     toggleLessonCompletion(crsId, lsnId);
-    if (activeLesson && activeLesson.id === lsnId) {
-      const nextState = !activeLesson.isCompleted;
-      setActiveLesson({ ...activeLesson, isCompleted: nextState });
-      if (nextState) {
+    const targetLsn = activeCourse?.topics.flatMap((t) => t.lessons).find((l) => l.id === lsnId);
+    const willBeCompleted = targetLsn ? !targetLsn.isCompleted : true;
+    if (willBeCompleted) {
+      try {
         confetti({
           particleCount: 80,
           spread: 70,
           origin: { y: 0.6 }
         });
+      } catch (e) {
+        console.log('Confetti error:', e);
       }
     }
   };
@@ -54,8 +67,8 @@ export default function CoursesPage() {
       id: 'crs-2',
       title: 'Basic Accounting Principles',
       description: 'Introduces the basic concepts, rules, and accounting equation.',
-      progressPct: 90,
-      image: 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?auto=format&fit=crop&q=80&w=600',
+      progressPct: 100,
+      image: 'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?auto=format&fit=crop&q=80&w=600',
       category: 'Basic Accounting Principles'
     },
     {
@@ -102,15 +115,25 @@ export default function CoursesPage() {
     category: string;
     rawCourse?: Course;
   }> = [
-    ...courses.map((c) => ({
-      id: c.id,
-      title: c.title,
-      description: c.description,
-      progressPct: Math.round((c.completedLessons / (c.totalLessons || 1)) * 100) || 0,
-      image: c.thumbnail || 'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?auto=format&fit=crop&q=80&w=600',
-      category: c.category,
-      rawCourse: c
-    })),
+    ...courses.map((c) => {
+      const actualTotal = c.topics && c.topics.length > 0
+        ? c.topics.reduce((sum, t) => sum + (t.lessons ? t.lessons.length : 0), 0)
+        : (c.totalLessons || 1);
+      const actualCompleted = c.topics && c.topics.length > 0
+        ? c.topics.reduce((sum, t) => sum + (t.lessons ? t.lessons.filter((l) => l.isCompleted).length : 0), 0)
+        : (c.completedLessons || 0);
+      const pct = Math.round((actualCompleted / (actualTotal || 1)) * 100);
+
+      return {
+        id: c.id,
+        title: c.title,
+        description: c.description,
+        progressPct: Math.min(100, Math.max(0, pct)),
+        image: c.thumbnail || 'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?auto=format&fit=crop&q=80&w=600',
+        category: c.category,
+        rawCourse: c
+      };
+    }),
     ...screenshotCourses.filter((sc) => !courses.some((c) => c.title.toLowerCase() === sc.title.toLowerCase()))
   ];
 
@@ -155,9 +178,9 @@ export default function CoursesPage() {
             <div
               key={crs.id}
               onClick={() => {
-                setActiveCourse(dynamicCourse);
+                setSelectedCourseId(dynamicCourse.id);
                 if (dynamicCourse?.topics[0]?.lessons[0]) {
-                  setActiveLesson(dynamicCourse.topics[0].lessons[0]);
+                  setSelectedLessonId(dynamicCourse.topics[0].lessons[0].id);
                 }
               }}
               className="card-theme p-5 rounded-3xl bg-white border border-slate-100 flex flex-col justify-between cursor-pointer group relative overflow-hidden"
@@ -219,8 +242,8 @@ export default function CoursesPage() {
               </div>
               <button
                 onClick={() => {
-                  setActiveCourse(null);
-                  setActiveLesson(null);
+                  setSelectedCourseId(null);
+                  setSelectedLessonId(null);
                 }}
                 className="p-2 rounded-full text-slate-400 hover:text-slate-800 hover:bg-slate-200/60 shrink-0"
               >
@@ -252,7 +275,7 @@ export default function CoursesPage() {
                         return (
                           <div
                             key={lsn.id}
-                            onClick={() => setActiveLesson(lsn)}
+                            onClick={() => setSelectedLessonId(lsn.id)}
                             className={`p-2.5 rounded-2xl cursor-pointer flex items-center justify-between text-xs transition ${
                               isSelected
                                 ? 'bg-[#0077b6] text-white font-bold shadow-md shadow-blue-500/20'
@@ -333,8 +356,8 @@ export default function CoursesPage() {
                       <Link
                         href="/quizzes"
                         onClick={() => {
-                          setActiveCourse(null);
-                          setActiveLesson(null);
+                          setSelectedCourseId(null);
+                          setSelectedLessonId(null);
                         }}
                         className="p-4 rounded-2xl bg-cyan-50 border border-cyan-200 text-cyan-800 hover:bg-cyan-100 flex items-center gap-3 transition font-bold text-xs"
                       >
@@ -345,8 +368,8 @@ export default function CoursesPage() {
                       <Link
                         href="/downloads"
                         onClick={() => {
-                          setActiveCourse(null);
-                          setActiveLesson(null);
+                          setSelectedCourseId(null);
+                          setSelectedLessonId(null);
                         }}
                         className="p-4 rounded-2xl bg-blue-50 border border-blue-200 text-blue-800 hover:bg-blue-100 flex items-center gap-3 transition font-bold text-xs"
                       >
