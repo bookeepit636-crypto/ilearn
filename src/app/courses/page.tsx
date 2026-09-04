@@ -207,22 +207,22 @@ export default function CoursesPage() {
 
       {/* Interactive Course Drawer Modal */}
       {activeCourse && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white border border-slate-200 rounded-3xl w-full max-w-5xl h-[85vh] flex flex-col overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4">
+          <div className="bg-white border border-slate-200 rounded-3xl w-full max-w-5xl h-[94vh] sm:h-[85vh] flex flex-col overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
             {/* Modal Header */}
-            <div className="p-5 border-b border-slate-200 flex items-center justify-between bg-slate-50">
-              <div>
-                <span className="text-xs text-[#0077b6] font-bold uppercase tracking-wider">
+            <div className="p-4 sm:p-5 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+              <div className="min-w-0 pr-2">
+                <span className="text-[10px] sm:text-xs text-[#0077b6] font-bold uppercase tracking-wider block">
                   {activeCourse.code} • {activeCourse.category}
                 </span>
-                <h2 className="text-xl font-black text-slate-800">{activeCourse.title}</h2>
+                <h2 className="text-base sm:text-xl font-black text-slate-800 truncate">{activeCourse.title}</h2>
               </div>
               <button
                 onClick={() => {
                   setActiveCourse(null);
                   setActiveLesson(null);
                 }}
-                className="p-2 rounded-full text-slate-400 hover:text-slate-800 hover:bg-slate-200/60"
+                className="p-2 rounded-full text-slate-400 hover:text-slate-800 hover:bg-slate-200/60 shrink-0"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -230,8 +230,8 @@ export default function CoursesPage() {
 
             {/* Modal Body */}
             <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
-              {/* Left Column: Topics List */}
-              <div className="w-full md:w-80 border-r border-slate-200 p-4 overflow-y-auto space-y-4 bg-slate-50/50">
+              {/* Left Column: Topics List (max-h-44 on mobile, full-height on desktop) */}
+              <div className="w-full md:w-80 border-b md:border-b-0 md:border-r border-slate-200 p-3 sm:p-4 max-h-44 md:max-h-none overflow-y-auto space-y-3 sm:space-y-4 bg-slate-50/50 shrink-0">
                 <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">
                   Course Outline
                 </h3>

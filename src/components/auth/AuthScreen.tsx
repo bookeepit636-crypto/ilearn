@@ -47,14 +47,14 @@ export const AuthScreen: React.FC = () => {
 
   return (
     <div
-      className="fixed top-0 left-0 w-screen h-screen z-50 bg-cover bg-center bg-no-repeat flex items-center justify-center p-4"
+      className="fixed inset-0 z-50 bg-cover bg-center bg-no-repeat overflow-y-auto flex items-center justify-center p-3 sm:p-6"
       style={{ backgroundImage: 'url(/bookkeeping-bg.jpg)' }}
     >
       {/* Dark & Cyan Overlay covering full viewport */}
-      <div className="absolute inset-0 bg-gradient-to-br from-slate-950/80 via-[#0052ad]/60 to-slate-950/85 backdrop-blur-xs" />
+      <div className="fixed inset-0 bg-gradient-to-br from-slate-950/80 via-[#0052ad]/60 to-slate-950/85 backdrop-blur-xs" />
 
       {/* Login / Register Card Modal */}
-      <div className="relative z-10 bg-white/95 backdrop-blur-md border border-white/40 rounded-3xl w-full max-w-md shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300">
+      <div className="relative z-10 bg-white/95 backdrop-blur-md border border-white/40 rounded-3xl w-full max-w-md shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300 my-auto">
         {/* Top Header Banner */}
         <div className="bg-gradient-to-r from-[#00b4d8] via-[#0077b6] to-[#023e8a] p-6 text-white text-center space-y-2 shadow-md">
           <div className="w-12 h-12 mx-auto rounded-full bg-white text-[#0077b6] flex items-center justify-center font-black text-xl shadow-xl">
