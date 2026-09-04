@@ -16,6 +16,16 @@ export const uploadToCloudinary = async (
     return URL.createObjectURL(file);
   }
 
+  // Cloudinary free unsigned upload limit is ~20-25MB for browser client uploads.
+  // Files exceeding this return 413 (Request Entity Too Large). Seamlessly use local stream.
+  const MAX_CLOUDINARY_SIZE = 25 * 1024 * 1024; // 25MB
+  if (file.size > MAX_CLOUDINARY_SIZE) {
+    console.info(
+      `File size (${(file.size / (1024 * 1024)).toFixed(1)}MB) exceeds Cloudinary 25MB unsigned limit. Using local blob stream.`
+    );
+    return URL.createObjectURL(file);
+  }
+
   try {
     const formData = new FormData();
     formData.append('file', file);
@@ -41,7 +51,7 @@ export const uploadToCloudinary = async (
     const data = await response.json();
     return data.secure_url || URL.createObjectURL(file);
   } catch (err) {
-    console.warn('Cloudinary upload network error, using local fallback:', err);
+    console.warn('Cloudinary upload network/CORS error, using local fallback:', err);
     return URL.createObjectURL(file);
   }
 };

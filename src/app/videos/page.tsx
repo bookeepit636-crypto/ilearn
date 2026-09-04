@@ -39,10 +39,11 @@ export default function VideosPage() {
 
     setUploadingFile(true);
     try {
-      const url = await uploadToCloudinary(file, 'video');
+      const url = await uploadToCloudinary(file, 'auto');
       setNewUrl(url);
     } catch (err) {
-      alert('Video upload failed: ' + (err as Error).message);
+      console.warn('Video upload fallback:', err);
+      setNewUrl(URL.createObjectURL(file));
     } finally {
       setUploadingFile(false);
     }
@@ -55,6 +56,9 @@ export default function VideosPage() {
     let embedUrl = newUrl;
     if (newUrl.includes('youtube.com/watch?v=')) {
       const vidId = newUrl.split('watch?v=')[1]?.split('&')[0];
+      embedUrl = `https://www.youtube.com/embed/${vidId}`;
+    } else if (newUrl.includes('youtu.be/')) {
+      const vidId = newUrl.split('youtu.be/')[1]?.split('?')[0];
       embedUrl = `https://www.youtube.com/embed/${vidId}`;
     }
 

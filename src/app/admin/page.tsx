@@ -339,7 +339,7 @@ export default function AdminPage() {
     const file = e.target.files?.[0];
     if (!file) return;
     try {
-      const uploadedUrl = await uploadToCloudinary(file, 'video');
+      const uploadedUrl = await uploadToCloudinary(file, 'auto');
       setLessonVideoUrl(uploadedUrl);
     } catch (err) {
       console.warn('Video upload fallback:', err);
