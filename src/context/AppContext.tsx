@@ -34,6 +34,7 @@ import {
   deleteVideoFromSupabase
 } from '@/lib/supabase';
 import { deleteVideoBlob } from '@/lib/videoStorage';
+import { sendQuizSubmissionNotification } from '@/lib/notifications';
 
 interface AppContextType {
   user: UserProfile;
@@ -449,6 +450,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       sender: 'BookKeep-It Quiz Engine'
     };
     setNotifications((prev) => [newNotif, ...prev]);
+
+    // Send email notification to Admin Gmail via Resend
+    sendQuizSubmissionNotification({
+      studentName: user.name,
+      studentEmail: user.email,
+      studentId: user.studentId,
+      program: user.program,
+      quizTitle: targetQuiz.title,
+      score: scorePct,
+      passed,
+      correctAnswersCount: correct,
+      totalQuestions,
+      submittedAt: newSubmission.submittedAt
+    }).catch((err) => {
+      console.warn('Resend email notification trigger notice:', err);
+    });
 
     return newSubmission;
   };
