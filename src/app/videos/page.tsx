@@ -135,8 +135,12 @@ export default function VideosPage() {
     }
 
     try {
-      const url = await uploadToCloudinary(file, 'auto');
-      setNewUrl(url);
+      const url = await uploadToCloudinary(file, 'video');
+      if (url && (url.startsWith('http://') || url.startsWith('https://'))) {
+        setNewUrl(url);
+      } else {
+        setNewUrl(URL.createObjectURL(file));
+      }
     } catch (err) {
       console.warn('Video upload fallback to local stream:', err);
       setNewUrl(URL.createObjectURL(file));
@@ -147,6 +151,10 @@ export default function VideosPage() {
 
   const handleAddVideo = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (uploadingFile) {
+      alert('Please wait for the video upload to finish before publishing.');
+      return;
+    }
     if (!newTitle || !newUrl) return;
 
     let embedUrl = newUrl;
@@ -633,9 +641,13 @@ export default function VideosPage() {
                 <button
                   type="submit"
                   disabled={uploadingFile}
-                  className="px-5 py-2 rounded-xl bg-gradient-to-r from-[#00b4d8] to-[#0077b6] hover:from-[#0077b6] hover:to-[#023e8a] text-white font-bold shadow-md shadow-cyan-500/20 transition"
+                  className={`px-5 py-2 rounded-xl text-white font-bold shadow-md transition ${
+                    uploadingFile
+                      ? 'bg-slate-400 cursor-not-allowed'
+                      : 'bg-gradient-to-r from-[#00b4d8] to-[#0077b6] hover:from-[#0077b6] hover:to-[#023e8a] shadow-cyan-500/20'
+                  }`}
                 >
-                  Publish Video
+                  {uploadingFile ? 'Uploading to Cloud...' : 'Publish Video'}
                 </button>
               </div>
             </form>

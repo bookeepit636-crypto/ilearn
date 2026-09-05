@@ -64,7 +64,14 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     }
 
     const resolveDirectVideo = async () => {
-      // 1. Try to load from IndexedDB if videoId is available
+      // 1. If it's a standard HTTP/HTTPS URL (e.g. Cloudinary or hosted file), use it directly
+      if (src && (src.startsWith('http://') || src.startsWith('https://'))) {
+        setActiveUrl(src);
+        setIsLoading(false);
+        return;
+      }
+
+      // 2. If it's a local blob URL or videoId is provided, check local IndexedDB cache
       if (videoId) {
         try {
           const blob = await getVideoBlob(videoId);
@@ -80,11 +87,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         }
       }
 
-      // 2. If no IndexedDB record found
+      // 3. Fallback check for session blob URLs (using standard GET, as HEAD is unsupported on blob:)
       if (!isCancelled) {
-        if (src.startsWith('blob:')) {
-          // Check if this blob URL is actually alive or revoked
-          fetch(src, { method: 'HEAD' })
+        if (src && src.startsWith('blob:')) {
+          fetch(src)
             .then(() => {
               if (!isCancelled) {
                 setActiveUrl(src);
@@ -92,15 +98,16 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
               }
             })
             .catch(() => {
-              // The blob was revoked by browser refresh
               if (!isCancelled) {
                 setHasError(true);
                 setIsLoading(false);
               }
             });
-        } else {
-          // Regular http/https or Cloudinary URL
+        } else if (src) {
           setActiveUrl(src);
+          setIsLoading(false);
+        } else {
+          setHasError(true);
           setIsLoading(false);
         }
       }

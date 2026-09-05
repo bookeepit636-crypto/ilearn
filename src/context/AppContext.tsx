@@ -25,7 +25,14 @@ import {
   initialSubmissions,
   initialVideos
 } from '@/lib/mockData';
-import { supabaseLogin, supabaseRegister, supabaseLogout } from '@/lib/supabase';
+import {
+  supabaseLogin,
+  supabaseRegister,
+  supabaseLogout,
+  fetchVideosFromSupabase,
+  saveVideoToSupabase,
+  deleteVideoFromSupabase
+} from '@/lib/supabase';
 import { deleteVideoBlob } from '@/lib/videoStorage';
 
 interface AppContextType {
@@ -215,6 +222,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } finally {
       setIsLoaded(true);
     }
+  }, []);
+
+  // Sync shared videos from Supabase Cloud on mount so all devices/Vercel stay synchronized
+  useEffect(() => {
+    let isMounted = true;
+    const syncCloudVideos = async () => {
+      try {
+        const cloudVideos = await fetchVideosFromSupabase();
+        if (isMounted && cloudVideos && cloudVideos.length > 0) {
+          setVideos((prevVideos) => {
+            const map = new Map<string, VideoLesson>();
+            initialVideos.forEach((iv) => map.set(iv.id, iv));
+            prevVideos.forEach((pv) => map.set(pv.id, pv));
+            cloudVideos.forEach((cv) => map.set(cv.id, cv));
+            return Array.from(map.values());
+          });
+        }
+      } catch (e) {
+        console.warn('Could not sync cloud videos:', e);
+      }
+    };
+    syncCloudVideos();
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   // Save state to LocalStorage on changes
@@ -466,12 +498,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const addVideo = (video: VideoLesson) => {
-    setVideos((prev) => [video, ...prev]);
+    setVideos((prev) => [video, ...prev.filter((v) => v.id !== video.id)]);
+    // Persist to Supabase database in background
+    saveVideoToSupabase(video).catch((err) => {
+      console.warn('Supabase saveVideo note:', err);
+    });
   };
 
   const deleteVideo = (id: string) => {
     setVideos((prev) => prev.filter((v) => v.id !== id));
     deleteVideoBlob(id);
+    deleteVideoFromSupabase(id).catch((err) => {
+      console.warn('Supabase deleteVideo note:', err);
+    });
   };
 
   const addMaterial = (material: DownloadableMaterial) => {

@@ -154,8 +154,8 @@ export default function AdminPage() {
 
     setIsVidUploading(true);
     try {
-      const url = await uploadToCloudinary(file, 'auto');
-      if (url) {
+      const url = await uploadToCloudinary(file, 'video');
+      if (url && (url.startsWith('http://') || url.startsWith('https://'))) {
         setVidUrl(url);
       }
     } catch (err) {
@@ -167,6 +167,10 @@ export default function AdminPage() {
 
   const handleAddVideo = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isVidUploading) {
+      alert('Please wait for the video upload to complete before publishing.');
+      return;
+    }
     if (!vidTitle || !vidUrl) {
       alert('Please enter a video title and URL or upload a video file.');
       return;
@@ -744,23 +748,32 @@ export default function AdminPage() {
                   disabled={isVidUploading}
                   className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-1.5 text-slate-600 file:mr-2 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-xs file:bg-indigo-50 file:text-indigo-700"
                 />
-                {uploadedVideoName && (
+                {uploadedVideoName && !isVidUploading && (
                   <div className="mt-1.5 p-2 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex items-center gap-2">
                     <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                    <span className="font-semibold truncate">Video Ready: {uploadedVideoName}</span>
+                    <span className="font-semibold truncate">
+                      {vidUrl.startsWith('http') ? 'Cloud CDN Video Ready' : 'Local Video Ready'}: {uploadedVideoName}
+                    </span>
                   </div>
                 )}
                 {isVidUploading && (
-                  <p className="text-[10px] text-indigo-600 mt-1 animate-pulse">Syncing video to Cloudinary CDN...</p>
+                  <p className="text-[10px] text-indigo-600 mt-1 animate-pulse font-bold flex items-center gap-1">
+                    <span>Uploading video to Cloudinary Cloud CDN... please wait</span>
+                  </p>
                 )}
               </div>
 
               <div className="sm:col-span-2 lg:col-span-4 flex justify-end">
                 <button
                   type="submit"
-                  className="w-full sm:w-auto px-6 py-2.5 rounded-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-md shadow-indigo-600/20 transition"
+                  disabled={isVidUploading}
+                  className={`w-full sm:w-auto px-6 py-2.5 rounded-full text-white font-bold text-xs shadow-md transition ${
+                    isVidUploading
+                      ? 'bg-indigo-300 cursor-not-allowed'
+                      : 'bg-indigo-600 hover:bg-indigo-500 shadow-indigo-600/20'
+                  }`}
                 >
-                  Publish Video
+                  {isVidUploading ? 'Uploading Video... Please Wait' : 'Publish Video'}
                 </button>
               </div>
             </form>

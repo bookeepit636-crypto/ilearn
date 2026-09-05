@@ -117,6 +117,7 @@ GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO anon, authenticated;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO anon, authenticated;
 
+-- ALLOW SELECT (READ) ACCESS
 CREATE POLICY "Allow public read access to courses" ON public.courses FOR SELECT USING (true);
 CREATE POLICY "Allow public read access to quizzes" ON public.quizzes FOR SELECT USING (true);
 CREATE POLICY "Allow public read access to materials" ON public.materials FOR SELECT USING (true);
@@ -124,4 +125,26 @@ CREATE POLICY "Allow public read access to videos" ON public.videos FOR SELECT U
 CREATE POLICY "Allow public read access to profiles" ON public.profiles FOR SELECT USING (true);
 CREATE POLICY "Allow public read access to submissions" ON public.quiz_submissions FOR SELECT USING (true);
 CREATE POLICY "Allow public read access to notifications" ON public.notifications FOR SELECT USING (true);
+
+-- ALLOW INSERT / WRITE ACCESS
+CREATE POLICY "Allow public insert to videos" ON public.videos FOR INSERT WITH CHECK (true);
+CREATE POLICY "Allow public update to videos" ON public.videos FOR UPDATE USING (true);
+CREATE POLICY "Allow public delete to videos" ON public.videos FOR DELETE USING (true);
+
+CREATE POLICY "Allow public insert to courses" ON public.courses FOR INSERT WITH CHECK (true);
+CREATE POLICY "Allow public update to courses" ON public.courses FOR UPDATE USING (true);
+CREATE POLICY "Allow public delete to courses" ON public.courses FOR DELETE USING (true);
+
+CREATE POLICY "Allow public insert to quizzes" ON public.quizzes FOR INSERT WITH CHECK (true);
+CREATE POLICY "Allow public update to quizzes" ON public.quizzes FOR UPDATE USING (true);
+CREATE POLICY "Allow public delete to quizzes" ON public.quizzes FOR DELETE USING (true);
+
+CREATE POLICY "Allow public insert to materials" ON public.materials FOR INSERT WITH CHECK (true);
+CREATE POLICY "Allow public update to materials" ON public.materials FOR UPDATE USING (true);
+CREATE POLICY "Allow public delete to materials" ON public.materials FOR DELETE USING (true);
+
+CREATE POLICY "Allow public insert to submissions" ON public.quiz_submissions FOR INSERT WITH CHECK (true);
+CREATE POLICY "Allow public insert to notifications" ON public.notifications FOR INSERT WITH CHECK (true);
+CREATE POLICY "Allow public update to notifications" ON public.notifications FOR UPDATE USING (true);
+
 
