@@ -199,14 +199,14 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         <div className="w-14 h-14 rounded-full bg-amber-500/20 text-amber-400 flex items-center justify-center mb-3">
           <Film className="w-7 h-7" />
         </div>
-        <h3 className="text-base font-bold text-slate-100 mb-1">Local Video Session Expired</h3>
+        <h3 className="text-base font-bold text-slate-100 mb-1">Video Stored Locally on Admin Computer</h3>
         <p className="text-xs text-slate-400 max-w-md mb-4 leading-relaxed">
-          This local video was uploaded in a previous browser session. Select the video file once to save it permanently in your browser offline storage.
+          This video was saved locally on the admin&apos;s computer because it exceeded the 100MB cloud upload limit. To make it stream smoothly on all mobile phones and student devices, publish via YouTube link or compress under 100MB.
         </p>
 
         <label className="cursor-pointer px-4 py-2 rounded-xl bg-gradient-to-r from-[#00b4d8] to-[#0077b6] hover:from-[#0077b6] hover:to-[#023e8a] text-white font-bold text-xs flex items-center gap-2 shadow-lg shadow-cyan-500/25 transition">
           <Upload className="w-4 h-4" />
-          <span>{isRelinking ? 'Saving...' : 'Re-link Video File'}</span>
+          <span>{isRelinking ? 'Saving...' : 'Re-link Local Video File'}</span>
           <input
             type="file"
             accept="video/*"

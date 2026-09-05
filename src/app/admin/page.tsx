@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import {
+  AlertTriangle,
   Award,
   BookOpen,
   CheckCircle2,
@@ -123,6 +124,7 @@ export default function AdminPage() {
   const [uploadedVideoThumb, setUploadedVideoThumb] = useState<string>('');
   const [lessonVideoFile, setLessonVideoFile] = useState<File | null>(null);
   const [isMatUploading, setIsMatUploading] = useState(false);
+  const [videoFileWarning, setVideoFileWarning] = useState('');
 
   // Announcement State
   const [annTitle, setAnnTitle] = useState('');
@@ -146,12 +148,17 @@ export default function AdminPage() {
     const localStreamUrl = URL.createObjectURL(file);
     setVidUrl(localStreamUrl);
 
-    // If file is > 25MB, keep the local stream directly to avoid Cloudinary 413 entity size error
-    if (file.size > 25 * 1024 * 1024) {
-      console.info(`File ${file.name} is large (${(file.size / (1024 * 1024)).toFixed(1)}MB). Stored locally.`);
+    // Cloudinary Free Tier unsigned browser uploads support up to 100MB.
+    // If file > 100MB, warn admin clearly that it will only be local unless hosted on YouTube.
+    const sizeMb = file.size / (1024 * 1024);
+    if (file.size > 100 * 1024 * 1024) {
+      setVideoFileWarning(
+        `This file is ${sizeMb.toFixed(1)}MB, which exceeds Cloudinary's 100MB free cloud upload limit. It is currently stored locally on this laptop only and CANNOT be viewed on phones or other devices. To make it viewable on mobile and for all students, upload it to YouTube (set to Unlisted) and paste the link above!`
+      );
       return;
     }
 
+    setVideoFileWarning('');
     setIsVidUploading(true);
     try {
       const url = await uploadToCloudinary(file, 'video');
@@ -748,7 +755,19 @@ export default function AdminPage() {
                   disabled={isVidUploading}
                   className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-1.5 text-slate-600 file:mr-2 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-xs file:bg-indigo-50 file:text-indigo-700"
                 />
-                {uploadedVideoName && !isVidUploading && (
+                {videoFileWarning && (
+                  <div className="mt-2 p-2.5 rounded-xl bg-amber-50 border border-amber-300 text-amber-900 text-xs space-y-1">
+                    <div className="flex items-center gap-1.5 font-bold text-amber-800">
+                      <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                      <span>Large Video Alert ({uploadedVideoName})</span>
+                    </div>
+                    <p className="text-[11px] text-amber-800 leading-relaxed">
+                      {videoFileWarning}
+                    </p>
+                  </div>
+                )}
+
+                {uploadedVideoName && !isVidUploading && !videoFileWarning && (
                   <div className="mt-1.5 p-2 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex items-center gap-2">
                     <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
                     <span className="font-semibold truncate">
