@@ -84,7 +84,12 @@ export type AdminTabType = 'users' | 'courses' | 'videos' | 'materials' | 'quizz
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
-const LOCAL_STORAGE_KEY = 'bookkeep_it_state_v6';
+const LOCAL_STORAGE_KEY = 'bookkeep_it_state_v7';
+
+export interface UserProgressRecord {
+  completedLessonIds: string[];
+  submissions: QuizSubmission[];
+}
 
 export const normalizeCourse = (crs: Course): Course => {
   const actualTotal = crs.topics && crs.topics.length > 0
@@ -99,6 +104,34 @@ export const normalizeCourse = (crs: Course): Course => {
     totalLessons: actualTotal > 0 ? actualTotal : 1,
     completedLessons: actualCompleted
   };
+};
+
+export const applyProgressToCourses = (baseCourses: Course[], completedIds: string[] = []): Course[] => {
+  return baseCourses.map((crs) => {
+    let completedInCourse = 0;
+    const updatedTopics = (crs.topics || []).map((tpc) => ({
+      ...tpc,
+      lessons: (tpc.lessons || []).map((lsn) => {
+        const isDone = completedIds.includes(lsn.id);
+        if (isDone) completedInCourse++;
+        return {
+          ...lsn,
+          isCompleted: isDone
+        };
+      })
+    }));
+
+    const total = crs.topics && crs.topics.length > 0
+      ? crs.topics.reduce((sum, t) => sum + (t.lessons ? t.lessons.length : 0), 0)
+      : (crs.totalLessons || 1);
+
+    return {
+      ...crs,
+      totalLessons: total > 0 ? total : 1,
+      completedLessons: completedInCourse,
+      topics: updatedTopics
+    };
+  });
 };
 
 // Pre-configured fixed admin profile
@@ -132,12 +165,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [courses, setCourses] = useState<Course[]>(() => initialCourses.map(normalizeCourse));
   const [quizzes, setQuizzes] = useState<Quiz[]>(initialQuizzes);
-  const [submissions, setSubmissions] = useState<QuizSubmission[]>(initialSubmissions);
+  const [submissions, setSubmissions] = useState<QuizSubmission[]>([]);
   const [materials, setMaterials] = useState<DownloadableMaterial[]>(initialMaterials);
   const [videos, setVideos] = useState<VideoLesson[]>(initialVideos);
   const [schedules, setSchedules] = useState<ScheduleItem[]>(initialSchedules);
   const [notifications, setNotifications] = useState<NotificationItem[]>(initialNotifications);
   const [faqs] = useState<FAQItem[]>(initialFAQs);
+  const [userProgress, setUserProgress] = useState<Record<string, UserProgressRecord>>({});
 
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -149,60 +183,44 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Load state from LocalStorage on mount
   useEffect(() => {
     try {
-      const saved =
-        localStorage.getItem(LOCAL_STORAGE_KEY) ||
-        localStorage.getItem('bookkeep_it_state_v5') ||
-        localStorage.getItem('bookkeep_it_state_v4');
+      const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
+        const storedProgress: Record<string, UserProgressRecord> = parsed.userProgress || {};
+        setUserProgress(storedProgress);
+
+        let activeUser = parsed.user || initialProfile;
+        if (parsed.accounts) setAccounts(parsed.accounts);
+        if (typeof parsed.isAuthenticated === 'boolean') setIsAuthenticated(parsed.isAuthenticated);
+
+        // Course structure from storage or initialCourses
+        let baseCoursesList = initialCourses.map(normalizeCourse);
         if (parsed.courses) {
           const savedCourses = parsed.courses.map(normalizeCourse);
-          const mergedCourses = initialCourses.map((initCrs) => {
-            const existing = savedCourses.find((sc: Course) => sc.id === initCrs.id || sc.title.toLowerCase() === initCrs.title.toLowerCase());
-            if (!existing) return normalizeCourse(initCrs);
-            // Sync updated video URLs and structure while preserving completion flags
-            const updatedTopics = initCrs.topics.map((initTpc) => {
-              const existingTpc = existing.topics?.find((et: any) => et.id === initTpc.id || et.title === initTpc.title);
-              const updatedLessons = initTpc.lessons.map((initLsn) => {
-                const existingLsn = existingTpc?.lessons?.find((el: any) => el.id === initLsn.id || el.title === initLsn.title);
-                return {
-                  ...initLsn,
-                  isCompleted: existingLsn !== undefined ? existingLsn.isCompleted : initLsn.isCompleted
-                };
-              });
-              return {
-                ...initTpc,
-                lessons: updatedLessons
-              };
-            });
-            return normalizeCourse({
-              ...existing,
-              ...initCrs,
-              topics: updatedTopics
-            });
-          });
           const customCourses = savedCourses.filter(
             (sc: Course) => !initialCourses.some((ic) => ic.id === sc.id || ic.title.toLowerCase() === sc.title.toLowerCase())
           );
-          const finalCourses = [...mergedCourses, ...customCourses];
-          setCourses(finalCourses);
-          const totalDone = finalCourses.reduce(
-            (acc: number, c: Course) => acc + (c.completedLessons || 0),
-            0
-          );
-          if (parsed.user) {
-            setUser({
-              ...parsed.user,
-              completedLessonsCount: totalDone
-            });
-          }
-        } else if (parsed.user) {
-          setUser(parsed.user);
+          baseCoursesList = [...initialCourses.map(normalizeCourse), ...customCourses];
         }
-        if (parsed.accounts) setAccounts(parsed.accounts);
-        if (typeof parsed.isAuthenticated === 'boolean') setIsAuthenticated(parsed.isAuthenticated);
+
+        // Apply active user's progress
+        const userProg = storedProgress[activeUser.id] || { completedLessonIds: [], submissions: [] };
+        const userCourses = applyProgressToCourses(baseCoursesList, userProg.completedLessonIds || []);
+        setCourses(userCourses);
+        setSubmissions(userProg.submissions || []);
+
+        const avgScore = (userProg.submissions && userProg.submissions.length > 0)
+          ? Math.round(userProg.submissions.reduce((a: number, b: QuizSubmission) => a + b.score, 0) / userProg.submissions.length)
+          : (activeUser.averageQuizScore || 0);
+
+        setUser({
+          ...activeUser,
+          completedLessonsCount: (userProg.completedLessonIds || []).length,
+          totalQuizzesTaken: (userProg.submissions || []).length,
+          averageQuizScore: avgScore
+        });
+
         if (parsed.quizzes) setQuizzes(parsed.quizzes);
-        if (parsed.submissions) setSubmissions(parsed.submissions);
         if (parsed.materials) setMaterials(parsed.materials);
         if (parsed.videos) {
           const updatedVideos = initialVideos.map((initVid) => {
@@ -263,13 +281,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         materials,
         videos,
         schedules,
-        notifications
+        notifications,
+        userProgress
       };
       localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(stateToSave));
     } catch (e) {
       console.error('Failed to save state:', e);
     }
-  }, [user, accounts, isAuthenticated, courses, quizzes, submissions, materials, videos, schedules, notifications, isLoaded]);
+  }, [user, accounts, isAuthenticated, courses, quizzes, submissions, materials, videos, schedules, notifications, userProgress, isLoaded]);
 
   // Login handler supporting fixed admin and student accounts with Supabase sync
   const login = (email: string, password?: string) => {
@@ -291,17 +310,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Check student/custom accounts or default to student
     const match = accounts.find(
       (acc) => acc.email.toLowerCase() === trimmedEmail
-    ) || initialStudentAccount;
+    );
+
+    const activeUser = match || initialStudentAccount;
+    const progress = userProgress[activeUser.id] || { completedLessonIds: [], submissions: [] };
+    
+    setCourses((prev) => applyProgressToCourses(prev, progress.completedLessonIds || []));
+    setSubmissions(progress.submissions || []);
+
+    const avgScore = (progress.submissions && progress.submissions.length > 0)
+      ? Math.round(progress.submissions.reduce((a, b) => a + b.score, 0) / progress.submissions.length)
+      : (activeUser.averageQuizScore || 0);
 
     setUser({
-      ...match,
-      email: trimmedEmail || match.email
+      ...activeUser,
+      completedLessonsCount: (progress.completedLessonIds || []).length,
+      totalQuizzesTaken: (progress.submissions || []).length,
+      averageQuizScore: avgScore
     });
     setIsAuthenticated(true);
     return { success: true };
   };
 
-  // Register new student account with Supabase sync
+  // Register new student account with clean fresh 0% progress
   const register = (name: string, email: string, password?: string, program?: string) => {
     const trimmedEmail = email.trim().toLowerCase();
     
@@ -328,6 +359,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       studyHours: 0,
       streakDays: 1
     };
+
+    // Initialize fresh empty progress for new account
+    setUserProgress((prev) => ({
+      ...prev,
+      [newAcc.id]: { completedLessonIds: [], submissions: [] }
+    }));
+
+    // Reset all courses to 0% progress and clear submissions for new student
+    setCourses((prev) => applyProgressToCourses(prev, []));
+    setSubmissions([]);
 
     setAccounts((prev) => [...prev, newAcc]);
     setUser(newAcc);
@@ -377,14 +418,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       submittedAt: new Date().toISOString()
     };
 
-    setSubmissions((prev) => [newSubmission, ...prev]);
+    const currentProg = userProgress[user.id] || { completedLessonIds: [], submissions: [] };
+    const updatedSubs = [newSubmission, ...currentProg.submissions.filter((s) => s.quizId !== targetQuiz.id)];
 
-    const allSubs = [newSubmission, ...submissions];
-    const avgScore = Math.round(allSubs.reduce((acc, curr) => acc + curr.score, 0) / allSubs.length);
+    setUserProgress((prev) => ({
+      ...prev,
+      [user.id]: {
+        ...currentProg,
+        submissions: updatedSubs
+      }
+    }));
+
+    setSubmissions(updatedSubs);
+
+    const avgScore = Math.round(updatedSubs.reduce((acc, curr) => acc + curr.score, 0) / updatedSubs.length);
 
     setUser((prev) => ({
       ...prev,
-      totalQuizzesTaken: allSubs.length,
+      totalQuizzesTaken: updatedSubs.length,
       averageQuizScore: avgScore
     }));
 
@@ -403,48 +454,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const toggleLessonCompletion = (courseId: string, lessonId: string) => {
-    setCourses((prevCourses) => {
-      const updatedCourses = prevCourses.map((crs) => {
-        if (crs.id !== courseId) return crs;
+    const currentProg = userProgress[user.id] || { completedLessonIds: [], submissions: [] };
+    const isCurrentlyDone = currentProg.completedLessonIds.includes(lessonId);
+    const updatedIds = isCurrentlyDone
+      ? currentProg.completedLessonIds.filter((id) => id !== lessonId)
+      : [...currentProg.completedLessonIds, lessonId];
 
-        const updatedTopics = crs.topics.map((tpc) => ({
-          ...tpc,
-          lessons: tpc.lessons.map((lsn) => {
-            if (lsn.id !== lessonId) return lsn;
-            return { ...lsn, isCompleted: !lsn.isCompleted };
-          })
-        }));
+    setUserProgress((prev) => ({
+      ...prev,
+      [user.id]: {
+        ...currentProg,
+        completedLessonIds: updatedIds
+      }
+    }));
 
-        const actualTotal = updatedTopics.reduce(
-          (sum, t) => sum + (t.lessons ? t.lessons.length : 0),
-          0
-        );
-        const actualCompleted = updatedTopics.reduce(
-          (sum, t) => sum + (t.lessons ? t.lessons.filter((l) => l.isCompleted).length : 0),
-          0
-        );
+    setCourses((prevCourses) => applyProgressToCourses(prevCourses, updatedIds));
 
-        return {
-          ...crs,
-          totalLessons: actualTotal > 0 ? actualTotal : (crs.totalLessons || 1),
-          completedLessons: actualCompleted,
-          topics: updatedTopics
-        };
-      });
-
-      // Synchronize overall user completed lessons count accurately
-      const totalDone = updatedCourses.reduce(
-        (sum, c) => sum + (c.completedLessons || 0),
-        0
-      );
-
-      setUser((prev) => ({
-        ...prev,
-        completedLessonsCount: totalDone
-      }));
-
-      return updatedCourses;
-    });
+    setUser((prev) => ({
+      ...prev,
+      completedLessonsCount: updatedIds.length
+    }));
   };
 
   const addScheduleItem = (item: Omit<ScheduleItem, 'id' | 'isCompleted'>) => {

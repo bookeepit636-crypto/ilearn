@@ -9,10 +9,10 @@ export const initialProfile: UserProfile = {
   bio: 'Second-year Accounting Student passionate about mastering automated bookkeeping and financial analysis.',
   studentId: 'BK-2026-8941',
   program: 'Bachelor of Science in Accountancy',
-  completedLessonsCount: 6,
-  totalQuizzesTaken: 8,
-  averageQuizScore: 92,
-  studyHours: 34.5,
+  completedLessonsCount: 0,
+  totalQuizzesTaken: 0,
+  averageQuizScore: 0,
+  studyHours: 0,
   streakDays: 6,
 };
 
@@ -27,7 +27,7 @@ export const initialCourses: Course[] = [
     thumbnail: 'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?auto=format&fit=crop&q=80&w=600',
     description: 'Step-by-step guide from analyzing source documents, recording General Journal entries, posting to General Ledger, to preparing the Trial Balance.',
     totalLessons: 3,
-    completedLessons: 3,
+    completedLessons: 0,
     topics: [
       {
         id: 'tpc-102-1',
@@ -40,7 +40,7 @@ export const initialCourses: Course[] = [
             title: 'Recording Transactions in the General Journal',
             description: 'How to write structured debits, credits, dates, and explanations.',
             duration: '35 mins',
-            isCompleted: true,
+            isCompleted: false,
             videoUrl: 'https://www.youtube.com/embed/Q_6A1ieXgp4',
             quizId: 'qz-104',
             downloadIds: ['dl-105', 'dl-106'],
@@ -62,7 +62,7 @@ A General Journal entry acts as a chronological diary of transactions.
             title: 'Posting to the General Ledger & T-Accounts',
             description: 'Transferring journal entries to individual ledger accounts.',
             duration: '30 mins',
-            isCompleted: true,
+            isCompleted: false,
             videoUrl: 'https://www.youtube.com/embed/56xscQ4viWE',
             quizId: 'qz-105',
             downloadIds: ['dl-106'],
@@ -86,7 +86,7 @@ T-Accounts summarize total Debits on the left and total Credits on the right to 
             title: 'Preparing the Unadjusted & Adjusted Trial Balance',
             description: 'Locating errors, trial balance worksheets, and balancing rules.',
             duration: '40 mins',
-            isCompleted: true,
+            isCompleted: false,
             videoUrl: 'https://www.youtube.com/embed/8ZKRWAad6Sk',
             quizId: 'qz-106',
             downloadIds: ['dl-107'],
@@ -111,7 +111,7 @@ Sum of Debits must equal Sum of Credits.
     thumbnail: 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?auto=format&fit=crop&q=80&w=600',
     description: 'Master the fundamental rules of accounting: Double-entry bookkeeping, the Accounting Equation (Assets = Liabilities + Equity), and core GAAP assumptions.',
     totalLessons: 3,
-    completedLessons: 3,
+    completedLessons: 0,
     topics: [
       {
         id: 'tpc-101-1',
@@ -124,7 +124,7 @@ Sum of Debits must equal Sum of Credits.
             title: 'Understanding Assets, Liabilities, and Owner\'s Equity',
             description: 'Define the three core elements of the financial position statement.',
             duration: '20 mins',
-            isCompleted: true,
+            isCompleted: false,
             videoUrl: 'https://www.youtube.com/embed/Q_6A1ieXgp4',
             quizId: 'qz-101',
             downloadIds: ['dl-101', 'dl-102'],
@@ -152,7 +152,7 @@ $$\\text{Assets} = \\text{Liabilities} + \\text{Owner's Equity}$$
             title: 'Double-Entry System: Debits and Credits',
             description: 'Learn the golden rules of Debit (Dr) and Credit (Cr) entries.',
             duration: '25 mins',
-            isCompleted: true,
+            isCompleted: false,
             videoUrl: 'https://www.youtube.com/embed/VhwZ9t2b3Zk',
             quizId: 'qz-102',
             downloadIds: ['dl-103'],
@@ -186,7 +186,7 @@ In double-entry bookkeeping, every transaction affects **at least two accounts**
             title: 'The Accrual Basis vs. Cash Basis Accounting',
             description: 'Compare cash timing vs revenue recognition when earned.',
             duration: '30 mins',
-            isCompleted: true,
+            isCompleted: false,
             videoUrl: 'https://www.youtube.com/embed/YZyBSU6YdmM',
             quizId: 'qz-103',
             downloadIds: ['dl-104'],
@@ -216,7 +216,7 @@ Under **Cash Basis Accounting**:
     thumbnail: 'https://images.unsplash.com/photo-1590283603385-17ffb3a7f29f?auto=format&fit=crop&q=80&w=600',
     description: 'Covers the fundamentals, purpose, career responsibilities, and essential importance of modern bookkeeping.',
     totalLessons: 2,
-    completedLessons: 2,
+    completedLessons: 0,
     topics: [
       {
         id: 'tpc-100-1',
@@ -229,7 +229,7 @@ Under **Cash Basis Accounting**:
             title: 'The Purpose and Responsibilities of a Bookkeeper',
             description: 'Daily ledger maintenance, reconciliations, and reporting support.',
             duration: '20 mins',
-            isCompleted: true,
+            isCompleted: false,
             videoUrl: 'https://www.youtube.com/embed/Q_6A1ieXgp4',
             quizId: 'qz-101',
             downloadIds: ['dl-101'],
@@ -247,7 +247,7 @@ Bookkeeping is the systematic recording, organizing, and tracking of financial t
             title: 'Source Documents & Audit Trails',
             description: 'Invoices, receipts, purchase orders, and bank statements.',
             duration: '25 mins',
-            isCompleted: true,
+            isCompleted: false,
             videoUrl: 'https://www.youtube.com/embed/56xscQ4viWE',
             quizId: 'qz-102',
             downloadIds: ['dl-102'],
@@ -271,7 +271,7 @@ Every accounting entry must have evidence through a valid source document such a
     thumbnail: 'https://images.unsplash.com/photo-1454165804606-c3d57bc86b40?auto=format&fit=crop&q=80&w=600',
     description: 'Allows learners to apply concepts through practical activities, comprehensive case studies, and real-world bookkeeping examples.',
     totalLessons: 2,
-    completedLessons: 2,
+    completedLessons: 0,
     topics: [
       {
         id: 'tpc-104-1',
@@ -284,7 +284,7 @@ Every accounting entry must have evidence through a valid source document such a
             title: 'Comprehensive Service Business Practice Problem',
             description: 'Record 10 sample transactions for a creative agency.',
             duration: '45 mins',
-            isCompleted: true,
+            isCompleted: false,
             videoUrl: 'https://www.youtube.com/embed/8ZKRWAad6Sk',
             quizId: 'qz-104',
             downloadIds: ['dl-105'],
@@ -300,7 +300,7 @@ Practice recording startup investments, equipment purchase on account, client bi
             title: 'T-Account Reconciliation Exercise',
             description: 'Calculate balances and prove Debit/Credit equality.',
             duration: '35 mins',
-            isCompleted: true,
+            isCompleted: false,
             videoUrl: 'https://www.youtube.com/embed/Q_6A1ieXgp4',
             quizId: 'qz-105',
             downloadIds: ['dl-106'],
@@ -324,7 +324,7 @@ Ensure total debits across asset and expense accounts equal total credits across
     thumbnail: 'https://images.unsplash.com/photo-1554224154-26032ffc0d07?auto=format&fit=crop&q=80&w=600',
     description: 'Introduces adjusting entries and their critical role in accurate financial reporting at period end.',
     totalLessons: 2,
-    completedLessons: 2,
+    completedLessons: 0,
     topics: [
       {
         id: 'tpc-105-1',
@@ -337,7 +337,7 @@ Ensure total debits across asset and expense accounts equal total credits across
             title: 'Adjusting for Prepayments & Deferrals',
             description: 'Convert balance sheet assets into income statement expenses.',
             duration: '30 mins',
-            isCompleted: true,
+            isCompleted: false,
             videoUrl: 'https://www.youtube.com/embed/VhwZ9t2b3Zk',
             quizId: 'qz-106',
             downloadIds: ['dl-107'],
@@ -353,7 +353,7 @@ Cash was paid in advance, but the benefit is recognized over time (e.g. Prepaid 
             title: 'Accrued Revenues & Expenses',
             description: 'Recording expenses incurred before cash payment.',
             duration: '35 mins',
-            isCompleted: true,
+            isCompleted: false,
             videoUrl: 'https://www.youtube.com/embed/Q_6A1ieXgp4',
             quizId: 'qz-106',
             downloadIds: ['dl-107'],
@@ -377,7 +377,7 @@ Revenues earned or expenses incurred before cash is exchanged (e.g. Accrued Sala
     thumbnail: 'https://images.unsplash.com/photo-1526304640581-d334cdbbf45e?auto=format&fit=crop&q=80&w=600',
     description: 'Preparation of the income statement, balance sheet, and other basic financial reports.',
     totalLessons: 2,
-    completedLessons: 2,
+    completedLessons: 0,
     topics: [
       {
         id: 'tpc-103-1',
@@ -390,7 +390,7 @@ Revenues earned or expenses incurred before cash is exchanged (e.g. Accrued Sala
             title: 'Building the Income Statement & Statement of Owner\'s Equity',
             description: 'Revenues minus Expenses equal Net Income or Loss.',
             duration: '30 mins',
-            isCompleted: true,
+            isCompleted: false,
             videoUrl: 'https://www.youtube.com/embed/0--AvwZabIQ',
             quizId: 'qz-107',
             downloadIds: ['dl-108'],
@@ -410,7 +410,7 @@ $$\\text{Ending Equity} = \\text{Beginning Equity} + \\text{Owner Investments} +
             title: 'Preparing the Classified Balance Sheet',
             description: 'Assets, Liabilities, and Equity presentation in formal accounting format.',
             duration: '40 mins',
-            isCompleted: true,
+            isCompleted: false,
             videoUrl: 'https://www.youtube.com/embed/Q_6A1ieXgp4',
             quizId: 'qz-107',
             downloadIds: ['dl-108'],
@@ -511,28 +511,7 @@ export const initialQuizzes: Quiz[] = [
   }
 ];
 
-export const initialSubmissions: QuizSubmission[] = [
-  {
-    id: 'sub-01',
-    quizId: 'qz-101',
-    quizTitle: 'Quiz 1: Assets, Liabilities & Owner\'s Equity',
-    score: 100,
-    passed: true,
-    totalQuestions: 3,
-    correctAnswersCount: 3,
-    submittedAt: '2026-08-18T10:30:00Z'
-  },
-  {
-    id: 'sub-02',
-    quizId: 'qz-102',
-    quizTitle: 'Quiz 2: Debits and Credits Fundamentals',
-    score: 100,
-    passed: true,
-    totalQuestions: 2,
-    correctAnswersCount: 2,
-    submittedAt: '2026-08-20T14:15:00Z'
-  }
-];
+export const initialSubmissions: QuizSubmission[] = [];
 
 export const initialMaterials: DownloadableMaterial[] = [
   {
