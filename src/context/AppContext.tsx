@@ -292,6 +292,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [user, accounts, isAuthenticated, courses, quizzes, submissions, materials, videos, schedules, notifications, userProgress, isLoaded]);
 
   // Login handler supporting fixed admin and student accounts with Supabase sync
+  // Login handler supporting admin and registered student accounts
   const login = (email: string, password?: string) => {
     const trimmedEmail = email.trim().toLowerCase();
     
@@ -300,31 +301,45 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     // Check fixed admin credentials
     if (
-      trimmedEmail.includes('admin') ||
-      (trimmedEmail === 'admin@bookkeep-it.edu' || trimmedEmail === 'admin@ilearn.edu')
+      trimmedEmail === 'admin@bookkeep-it.edu' ||
+      trimmedEmail === 'admin@ilearn.edu' ||
+      trimmedEmail === 'admin@gmail.com'
     ) {
       setUser(fixedAdminProfile);
       setIsAuthenticated(true);
       return { success: true };
     }
 
-    // Check student/custom accounts or default to student
+    // Check student/custom accounts
     const match = accounts.find(
       (acc) => acc.email.toLowerCase() === trimmedEmail
     );
 
-    const activeUser = match || initialStudentAccount;
-    const progress = userProgress[activeUser.id] || { completedLessonIds: [], submissions: [] };
+    if (!match) {
+      return {
+        success: false,
+        error: `No account found for "${email}". Please click the "Create Account" tab above to register first.`
+      };
+    }
+
+    if (password && match.password && match.password !== password) {
+      return {
+        success: false,
+        error: 'Incorrect password. Please verify and try again.'
+      };
+    }
+
+    const progress = userProgress[match.id] || { completedLessonIds: [], submissions: [] };
     
     setCourses((prev) => applyProgressToCourses(prev, progress.completedLessonIds || []));
     setSubmissions(progress.submissions || []);
 
     const avgScore = (progress.submissions && progress.submissions.length > 0)
       ? Math.round(progress.submissions.reduce((a, b) => a + b.score, 0) / progress.submissions.length)
-      : (activeUser.averageQuizScore || 0);
+      : (match.averageQuizScore || 0);
 
     setUser({
-      ...activeUser,
+      ...match,
       completedLessonsCount: (progress.completedLessonIds || []).length,
       totalQuizzesTaken: (progress.submissions || []).length,
       averageQuizScore: avgScore
