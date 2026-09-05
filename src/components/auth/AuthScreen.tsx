@@ -66,8 +66,12 @@ export const AuthScreen: React.FC = () => {
       <div className="relative z-10 bg-white/95 backdrop-blur-md border border-white/40 rounded-3xl w-full max-w-md shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300 my-auto">
         {/* Top Header Banner */}
         <div className="bg-gradient-to-r from-[#00b4d8] via-[#0077b6] to-[#023e8a] p-6 text-white text-center space-y-2 shadow-md">
-          <div className="w-12 h-12 mx-auto rounded-full bg-white text-[#0077b6] flex items-center justify-center font-black text-xl shadow-xl">
-            <BookOpen className="w-6 h-6" />
+          <div className="w-14 h-14 mx-auto rounded-2xl overflow-hidden bg-white shadow-xl border-2 border-white/50">
+            <img
+              src="/logo.jpeg"
+              alt="BookKeep-It Logo"
+              className="w-full h-full object-cover"
+            />
           </div>
           <h2 className="text-2xl font-black tracking-tight">
             {mode === 'login' ? 'Login' : 'Create Account'}

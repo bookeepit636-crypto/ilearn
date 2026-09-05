@@ -50,8 +50,12 @@ export const Sidebar: React.FC = () => {
         {/* Brand Logo Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-2xl bg-white text-[#0077b6] flex items-center justify-center font-black text-lg shadow-md">
-              BK
+            <div className="w-10 h-10 rounded-2xl overflow-hidden bg-white shadow-md shrink-0 border border-white/20">
+              <img
+                src="/logo.jpeg"
+                alt="BookKeep-It Logo"
+                className="w-full h-full object-cover"
+              />
             </div>
             <div>
               <h1 className="font-extrabold text-base text-white tracking-wide leading-tight">
