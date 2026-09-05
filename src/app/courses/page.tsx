@@ -195,7 +195,9 @@ export default function CoursesPage() {
                     }`}
                     style={{ width: `${crs.progressPct}%` }}
                   />
-                  <span className="absolute inset-0 flex items-center justify-center text-[10px] font-black text-white drop-shadow-xs">
+                  <span className={`absolute inset-0 flex items-center justify-center text-[10px] font-black ${
+                    crs.progressPct > 0 ? 'text-white drop-shadow-xs' : 'text-slate-500 font-bold'
+                  }`}>
                     {crs.progressPct}% Completed
                   </span>
                 </div>

@@ -191,7 +191,9 @@ export default function DashboardPage() {
                         className="bg-gradient-to-r from-[#48cae4] to-[#0077b6] h-full rounded-full transition-all duration-700"
                         style={{ width: `${progressPct}%` }}
                       />
-                      <span className="absolute inset-0 flex items-center justify-center text-[9px] font-black text-white">
+                      <span className={`absolute inset-0 flex items-center justify-center text-[9px] font-black ${
+                        progressPct > 0 ? 'text-white' : 'text-slate-500 font-bold'
+                      }`}>
                         {progressPct}% Completed
                       </span>
                     </div>
