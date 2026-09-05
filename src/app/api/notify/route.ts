@@ -167,19 +167,29 @@ export async function POST(req: Request) {
       `;
     }
 
-    const { data: resendData, error } = await resend.emails.send({
+    let sendResult = await resend.emails.send({
       from: fromEmail,
       to: recipients,
       subject,
       html: htmlContent
     });
 
-    if (error) {
-      console.error('Resend API error:', error);
-      return NextResponse.json({ success: false, error: error.message }, { status: 400 });
+    // If Resend trial mode blocks external recipients, fallback to sending to the admin email
+    if (sendResult.error && sendResult.error.message?.toLowerCase().includes('testing emails') && adminEmail) {
+      sendResult = await resend.emails.send({
+        from: fromEmail,
+        to: [adminEmail],
+        subject,
+        html: htmlContent
+      });
     }
 
-    return NextResponse.json({ success: true, resendData });
+    if (sendResult.error) {
+      console.error('Resend API error:', sendResult.error);
+      return NextResponse.json({ success: false, error: sendResult.error.message }, { status: 400 });
+    }
+
+    return NextResponse.json({ success: true, resendData: sendResult.data });
   } catch (err: any) {
     console.error('Notify route exception:', err);
     return NextResponse.json({ success: false, error: err.message || 'Internal Server Error' }, { status: 500 });

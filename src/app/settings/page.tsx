@@ -163,7 +163,7 @@ export default function SettingsPage() {
                       type: 'quiz_submission',
                       data: {
                         studentName: 'Alex Cruz (Test Student)',
-                        studentEmail: 'student.demo@ilearn.edu',
+                        studentEmail: 'bookeepit636@gmail.com',
                         studentId: 'STU-2026-999',
                         program: 'BS Accountancy',
                         quizTitle: 'Quiz 1: Assets, Liabilities & Owner\'s Equity (Test Notification)',
