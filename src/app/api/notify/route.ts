@@ -7,15 +7,27 @@ export async function POST(req: Request) {
     const { type, data } = body;
 
     const apiKey = process.env.RESEND_API_KEY;
-    const toEmail = process.env.ADMIN_NOTIFICATION_EMAIL || process.env.NEXT_PUBLIC_ADMIN_NOTIFICATION_EMAIL || 'admin@ilearn.edu';
     const fromEmail = process.env.RESEND_FROM_EMAIL || 'BookKeep-It Notifications <onboarding@resend.dev>';
+    const adminEmail = (process.env.ADMIN_NOTIFICATION_EMAIL || process.env.NEXT_PUBLIC_ADMIN_NOTIFICATION_EMAIL || '').trim();
+
+    // Dynamically send to the student's own registered email + admin email
+    const recipients: string[] = [];
+    if (data?.studentEmail && typeof data.studentEmail === 'string' && data.studentEmail.includes('@')) {
+      recipients.push(data.studentEmail.trim());
+    }
+    if (adminEmail && adminEmail.includes('@') && !recipients.includes(adminEmail)) {
+      recipients.push(adminEmail);
+    }
+    if (recipients.length === 0) {
+      recipients.push('admin@ilearn.edu');
+    }
 
     if (!apiKey) {
       console.warn('RESEND_API_KEY is not configured in environment variables. Email notification was skipped.');
       return NextResponse.json({
         success: false,
         warning: 'RESEND_API_KEY is not configured. Please set RESEND_API_KEY in your environment variables.',
-        preview: { to: toEmail, type, data }
+        preview: { recipients, type, data }
       });
     }
 
@@ -157,7 +169,7 @@ export async function POST(req: Request) {
 
     const { data: resendData, error } = await resend.emails.send({
       from: fromEmail,
-      to: [toEmail],
+      to: recipients,
       subject,
       html: htmlContent
     });
