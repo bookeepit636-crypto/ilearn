@@ -123,6 +123,10 @@ export async function supabaseLogin(email: string, password?: string) {
 
 export async function supabaseRegister(name: string, email: string, password?: string, program?: string) {
   if (!isSupabaseConfigured()) return null;
+  // If email is already registered locally or contains demo domain, skip auth email rate limits
+  if (email.includes('bookkeep-it.edu') || email.includes('ilearn.edu')) {
+    return null;
+  }
   try {
     const { data, error } = await supabase.auth.signUp({
       email,
@@ -134,7 +138,10 @@ export async function supabaseRegister(name: string, email: string, password?: s
         }
       }
     });
-    if (error) return null;
+    if (error) {
+      // Gracefully ignore rate limits on free Supabase tier
+      return null;
+    }
     return data;
   } catch {
     return null;
