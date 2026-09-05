@@ -1,14 +1,18 @@
 import { NextResponse } from 'next/server';
 import { Resend } from 'resend';
+import nodemailer from 'nodemailer';
 
 export async function POST(req: Request) {
   try {
     const body = await req.json();
     const { type, data } = body;
 
-    const apiKey = process.env.RESEND_API_KEY;
+    const resendApiKey = process.env.RESEND_API_KEY;
     const fromEmail = process.env.RESEND_FROM_EMAIL || 'BookKeep-It Notifications <onboarding@resend.dev>';
     const adminEmail = (process.env.ADMIN_NOTIFICATION_EMAIL || process.env.NEXT_PUBLIC_ADMIN_NOTIFICATION_EMAIL || '').trim();
+
+    const gmailUser = (process.env.GMAIL_USER || process.env.EMAIL_USER || '').trim();
+    const gmailPass = (process.env.GMAIL_APP_PASSWORD || process.env.GMAIL_PASS || process.env.EMAIL_PASS || '').trim();
 
     // Dynamically send to the student's own registered email + admin email
     const recipients: string[] = [];
@@ -21,17 +25,6 @@ export async function POST(req: Request) {
     if (recipients.length === 0) {
       recipients.push('admin@ilearn.edu');
     }
-
-    if (!apiKey) {
-      console.warn('RESEND_API_KEY is not configured in environment variables. Email notification was skipped.');
-      return NextResponse.json({
-        success: false,
-        warning: 'RESEND_API_KEY is not configured. Please set RESEND_API_KEY in your environment variables.',
-        preview: { recipients, type, data }
-      });
-    }
-
-    const resend = new Resend(apiKey);
 
     let subject = '📢 New Activity on BookKeep-It';
     let htmlContent = '';
@@ -97,7 +90,7 @@ export async function POST(req: Request) {
 
             <!-- Footer Note -->
             <p style="font-size: 12px; color: #94a3b8; text-align: center; margin: 24px 0 0 0;">
-              This is an automated notification from BookKeep-It LMS. You are receiving this because your email is configured as the admin receiver.
+              This is an automated notification from BookKeep-It LMS.
             </p>
           </div>
         </div>
@@ -117,7 +110,6 @@ export async function POST(req: Request) {
 
           <!-- Body -->
           <div style="padding: 24px;">
-            <!-- Activity Details Card -->
             <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 18px; margin-bottom: 20px;">
               <h2 style="margin: 0 0 12px 0; font-size: 16px; font-weight: 700; color: #1e293b;">${activityTitle}</h2>
               <table style="width: 100%; font-size: 13px; color: #475569; border-collapse: collapse;">
@@ -160,36 +152,65 @@ export async function POST(req: Request) {
 
             <!-- Footer Note -->
             <p style="font-size: 12px; color: #94a3b8; text-align: center; margin: 24px 0 0 0;">
-              This is an automated notification from BookKeep-It LMS. You are receiving this because your email is configured as the admin receiver.
+              This is an automated notification from BookKeep-It LMS.
             </p>
           </div>
         </div>
       `;
     }
 
-    let sendResult = await resend.emails.send({
-      from: fromEmail,
-      to: recipients,
-      subject,
-      html: htmlContent
-    });
+    // 1. Prefer Direct Gmail SMTP (Nodemailer) if configured: Sends directly to ANY student Gmail with NO domain needed!
+    if (gmailUser && gmailPass) {
+      const transporter = nodemailer.createTransport({
+        service: 'gmail',
+        auth: {
+          user: gmailUser,
+          pass: gmailPass
+        }
+      });
 
-    // If Resend trial mode blocks external recipients, fallback to sending to the admin email
-    if (sendResult.error && sendResult.error.message?.toLowerCase().includes('testing emails') && adminEmail) {
-      sendResult = await resend.emails.send({
-        from: fromEmail,
-        to: [adminEmail],
+      const info = await transporter.sendMail({
+        from: `"BookKeep-It" <${gmailUser}>`,
+        to: recipients.join(', '),
         subject,
         html: htmlContent
       });
+
+      return NextResponse.json({ success: true, provider: 'gmail_smtp', messageId: info.messageId });
     }
 
-    if (sendResult.error) {
-      console.error('Resend API error:', sendResult.error);
-      return NextResponse.json({ success: false, error: sendResult.error.message }, { status: 400 });
+    // 2. Otherwise use Resend
+    if (resendApiKey) {
+      const resend = new Resend(resendApiKey);
+      let sendResult = await resend.emails.send({
+        from: fromEmail,
+        to: recipients,
+        subject,
+        html: htmlContent
+      });
+
+      // If Resend trial mode blocks external recipients, fallback to sending to admin email
+      if (sendResult.error && sendResult.error.message?.toLowerCase().includes('testing emails') && adminEmail) {
+        sendResult = await resend.emails.send({
+          from: fromEmail,
+          to: [adminEmail],
+          subject,
+          html: htmlContent
+        });
+      }
+
+      if (sendResult.error) {
+        console.error('Resend API error:', sendResult.error);
+        return NextResponse.json({ success: false, error: sendResult.error.message }, { status: 400 });
+      }
+
+      return NextResponse.json({ success: true, provider: 'resend', resendData: sendResult.data });
     }
 
-    return NextResponse.json({ success: true, resendData: sendResult.data });
+    return NextResponse.json({
+      success: false,
+      warning: 'No email service configured. Please set GMAIL_USER and GMAIL_APP_PASSWORD, or RESEND_API_KEY.'
+    });
   } catch (err: any) {
     console.error('Notify route exception:', err);
     return NextResponse.json({ success: false, error: err.message || 'Internal Server Error' }, { status: 500 });
