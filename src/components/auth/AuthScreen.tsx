@@ -44,18 +44,6 @@ export const AuthScreen: React.FC = () => {
     }
   };
 
-  const fillAdminCredentials = () => {
-    setEmail('admin@bookkeep-it.edu');
-    setPassword('admin123');
-    setMode('login');
-  };
-
-  const fillStudentCredentials = () => {
-    setEmail('alex.morgan@student.ilearn.edu');
-    setPassword('student123');
-    setMode('login');
-  };
-
   return (
     <div
       className="fixed inset-0 z-50 bg-cover bg-center bg-no-repeat overflow-y-auto flex items-center justify-center p-3 sm:p-6"
@@ -165,29 +153,6 @@ export const AuthScreen: React.FC = () => {
               >
                 Log In
               </button>
-
-              {/* Demo Credentials Quick Fill Bar */}
-              <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-1.5">
-                <p className="text-[11px] font-bold text-slate-700 flex items-center justify-between">
-                  <span>Quick Demo Logins:</span>
-                </p>
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={fillStudentCredentials}
-                    className="flex-1 py-1 px-2 rounded-xl bg-cyan-50 hover:bg-cyan-100 border border-cyan-200 text-[#0077b6] text-[10px] font-bold"
-                  >
-                    🎓 Student Account
-                  </button>
-                  <button
-                    type="button"
-                    onClick={fillAdminCredentials}
-                    className="flex-1 py-1 px-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 text-[10px] font-bold"
-                  >
-                    🛡️ Fixed Admin
-                  </button>
-                </div>
-              </div>
 
               <p className="text-center text-xs text-slate-500 pt-1">
                 Don&apos;t have an account?{' '}

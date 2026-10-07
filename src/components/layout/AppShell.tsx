@@ -25,7 +25,7 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
 
   if (isLiveMeetingRoom) {
     return (
-      <div className="fixed inset-0 w-full h-[100dvh] bg-slate-950 flex flex-col overflow-hidden z-50">
+      <div className="fixed inset-0 w-full h-[100dvh] bg-slate-50 flex flex-col overflow-hidden z-50">
         {children}
       </div>
     );

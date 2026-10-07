@@ -392,12 +392,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Sync with Supabase Auth in background if configured
     supabaseLogin(trimmedEmail, password);
 
-    // Check fixed admin credentials
+    // Check admin credentials
     if (
       trimmedEmail === 'admin@bookkeep-it.edu' ||
       trimmedEmail === 'admin@ilearn.edu' ||
       trimmedEmail === 'admin@gmail.com'
     ) {
+      if (password && password !== 'admin123') {
+        return {
+          success: false,
+          error: 'Incorrect administrator password. Please verify and try again.'
+        };
+      }
       setUser(fixedAdminProfile);
       setIsAuthenticated(true);
       return { success: true };

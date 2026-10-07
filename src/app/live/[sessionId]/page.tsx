@@ -244,13 +244,21 @@ export default function LiveSessionPage() {
 
   if (pageState === 'not-found') {
     return (
-      <div className="text-center py-24 space-y-4">
-        <AlertTriangle className="w-12 h-12 text-amber-400 mx-auto" />
-        <h2 className="text-xl font-black text-slate-700">Session Not Found</h2>
-        <p className="text-sm text-slate-500">This live class does not exist or has been removed.</p>
-        <Link href="/live" className="inline-flex items-center gap-2 text-[#0077b6] font-bold text-sm hover:underline">
-          <ArrowLeft className="w-4 h-4" /> Back to Live Classes
-        </Link>
+      <div className="w-full h-full min-h-[100dvh] bg-slate-50 flex items-center justify-center p-4 sm:p-6 animate-in fade-in duration-300">
+        <div className="card-theme bg-white border border-slate-200/80 rounded-3xl p-8 max-w-md w-full text-center space-y-4 shadow-xl">
+          <AlertTriangle className="w-12 h-12 text-amber-500 mx-auto" />
+          <h2 className="text-xl font-black text-slate-800">Session Not Found</h2>
+          <p className="text-xs text-slate-500">This live class does not exist or has been removed.</p>
+          <div className="pt-2">
+            <Link
+              href="/live"
+              className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-full bg-[#00b4d8] hover:bg-[#0077b6] text-white font-extrabold text-xs shadow-md shadow-cyan-500/20 transition"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span>Back to Live Classes</span>
+            </Link>
+          </div>
+        </div>
       </div>
     );
   }
@@ -259,122 +267,155 @@ export default function LiveSessionPage() {
 
   if (pageState === 'cancelled') {
     return (
-      <div className="text-center py-24 space-y-4">
-        <XCircle className="w-12 h-12 text-slate-400 mx-auto" />
-        <h2 className="text-xl font-black text-slate-700">Session Cancelled</h2>
-        <p className="text-sm text-slate-500">{session.title} has been cancelled.</p>
-        <Link href="/live" className="inline-flex items-center gap-2 text-[#0077b6] font-bold text-sm hover:underline">
-          <ArrowLeft className="w-4 h-4" /> Back to Live Classes
-        </Link>
+      <div className="w-full h-full min-h-[100dvh] bg-slate-50 flex items-center justify-center p-4 sm:p-6 animate-in fade-in duration-300">
+        <div className="card-theme bg-white border border-slate-200/80 rounded-3xl p-8 max-w-md w-full text-center space-y-4 shadow-xl">
+          <XCircle className="w-12 h-12 text-rose-500 mx-auto" />
+          <h2 className="text-xl font-black text-slate-800">Session Cancelled</h2>
+          <p className="text-xs text-slate-500">{session.title} has been cancelled.</p>
+          <div className="pt-2">
+            <Link
+              href="/live"
+              className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-full bg-[#00b4d8] hover:bg-[#0077b6] text-white font-extrabold text-xs shadow-md shadow-cyan-500/20 transition"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span>Back to Live Classes</span>
+            </Link>
+          </div>
+        </div>
       </div>
     );
   }
 
   if (pageState === 'completed') {
     return (
-      <div className="space-y-8 animate-in fade-in duration-300">
-        <div className="flex items-center gap-3 border-b border-slate-200/80 pb-4">
-          <Link href="/live" className="text-slate-400 hover:text-slate-700 transition">
-            <ArrowLeft className="w-5 h-5" />
-          </Link>
-          <div>
-            <h1 className="text-xl font-black text-slate-800">{session.title}</h1>
-            <p className="text-xs text-slate-500">Session Completed · {session.date}</p>
+      <div className="w-full h-full min-h-[100dvh] bg-slate-50 flex items-center justify-center p-4 sm:p-6 animate-in fade-in duration-300">
+        <div className="card-theme bg-white border border-slate-200/80 rounded-3xl p-6 sm:p-8 max-w-lg w-full text-center space-y-5 shadow-xl">
+          {/* Status Badge & Icon */}
+          <div className="w-14 h-14 rounded-2xl bg-emerald-50 border border-emerald-100 flex items-center justify-center mx-auto shadow-sm">
+            <CheckCircle2 className="w-7 h-7 text-emerald-500" />
           </div>
-        </div>
 
-        {session.recordingUrl ? (
-          <div className="space-y-3">
-            <div className="flex items-center gap-2">
-              <CheckCircle2 className="w-5 h-5 text-emerald-500" />
-              <h2 className="font-black text-slate-700 text-base">Session Recording Available</h2>
-            </div>
-            <div className="rounded-2xl overflow-hidden shadow-lg aspect-video bg-slate-900">
-              <iframe
-                src={session.recordingUrl}
-                title="Session Recording"
-                className="w-full h-full"
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                allowFullScreen
-              />
-            </div>
-            <p className="text-xs text-slate-500">
-              Instructor: <span className="font-bold text-slate-600">{session.instructorName}</span>
-              {session.attendeesCount ? ` · ${session.attendeesCount} attended` : ''}
+          <div className="space-y-1">
+            <span className="text-[10px] font-extrabold uppercase px-3 py-1 rounded-full bg-emerald-100 text-emerald-700 tracking-wider">
+              Session Completed
+            </span>
+            <h2 className="text-xl font-black text-slate-800 pt-1.5">{session.title}</h2>
+            <p className="text-xs text-slate-500 font-medium">
+              {session.date} · {session.startTime}{session.endTime ? ` – ${session.endTime}` : ''}
             </p>
           </div>
-        ) : (
-          <div className="card-theme p-8 rounded-3xl text-center space-y-3">
-            <CheckCircle2 className="w-10 h-10 text-emerald-500 mx-auto" />
-            <h2 className="font-bold text-slate-700">Session has ended</h2>
-            <p className="text-sm text-slate-400">No recording is available for this session.</p>
+
+          {/* Session Details */}
+          <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4 text-xs space-y-2 text-left">
+            {session.courseTitle && (
+              <div className="flex items-center justify-between text-slate-600">
+                <span className="text-slate-400 font-semibold">Course:</span>
+                <span className="font-bold text-[#0077b6]">{session.courseTitle}</span>
+              </div>
+            )}
+            <div className="flex items-center justify-between text-slate-600">
+              <span className="text-slate-400 font-semibold">Instructor:</span>
+              <span className="font-bold text-slate-700">{session.instructorName}</span>
+            </div>
+            {session.attendeesCount !== undefined && session.attendeesCount > 0 && (
+              <div className="flex items-center justify-between text-slate-600">
+                <span className="text-slate-400 font-semibold">Attended:</span>
+                <span className="font-bold text-slate-700">{session.attendeesCount} students</span>
+              </div>
+            )}
           </div>
-        )}
-        <Link href="/live" className="inline-flex items-center gap-2 text-[#0077b6] font-bold text-sm hover:underline">
-          <ArrowLeft className="w-4 h-4" /> Back to Live Classes
-        </Link>
+
+          {session.recordingUrl && (
+            <div className="space-y-2 text-left">
+              <p className="text-xs font-bold text-slate-700">Class Replay:</p>
+              <div className="rounded-2xl overflow-hidden aspect-video bg-black shadow-md">
+                <iframe
+                  src={session.recordingUrl}
+                  title="Session Recording"
+                  className="w-full h-full"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                />
+              </div>
+            </div>
+          )}
+
+          {/* ONLY 1 CLEAR BACK BUTTON */}
+          <div className="pt-2">
+            <Link
+              href="/live"
+              className="w-full flex items-center justify-center gap-2 py-3 px-6 rounded-full bg-[#00b4d8] hover:bg-[#0077b6] text-white font-extrabold text-xs shadow-md shadow-cyan-500/25 transition-all hover:scale-[1.01] active:scale-95"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span>Back to Live Classes</span>
+            </Link>
+          </div>
+        </div>
       </div>
     );
   }
 
   if (pageState === 'waiting') {
     return (
-      <div className="space-y-6 animate-in fade-in duration-300">
-        <div className="flex items-center gap-3 border-b border-slate-200/80 pb-4">
-          <Link href="/live" className="text-slate-400 hover:text-slate-700 transition">
-            <ArrowLeft className="w-5 h-5" />
-          </Link>
-          <div>
-            <h1 className="text-xl font-black text-slate-800">{session.title}</h1>
-            <p className="text-xs text-slate-500">Upcoming · {session.date} at {session.startTime}</p>
+      <div className="w-full h-full min-h-[100dvh] bg-slate-50 flex items-center justify-center p-4 sm:p-6 animate-in fade-in duration-300">
+        <div className="card-theme bg-white border border-slate-200/80 rounded-3xl p-6 sm:p-8 space-y-5 max-w-lg w-full text-center shadow-xl">
+          <div className="w-14 h-14 rounded-2xl bg-cyan-50 flex items-center justify-center mx-auto border border-cyan-100">
+            <Clock className="w-7 h-7 text-[#0077b6]" />
           </div>
-        </div>
-
-        <div className="card-theme p-8 rounded-3xl space-y-5 max-w-lg mx-auto text-center">
-          <div className="w-16 h-16 rounded-2xl bg-cyan-50 flex items-center justify-center mx-auto">
-            <Clock className="w-8 h-8 text-cyan-600" />
+          <div className="space-y-1">
+            <span className="text-[10px] font-extrabold uppercase px-3 py-1 rounded-full bg-cyan-100 text-cyan-700 tracking-wider">
+              Upcoming Class
+            </span>
+            <h2 className="font-black text-slate-800 text-xl pt-1.5">{session.title}</h2>
+            <p className="text-xs text-slate-500 font-medium">{session.description}</p>
           </div>
-          <div>
-            <h2 className="font-black text-slate-800 text-lg">{session.title}</h2>
-            <p className="text-sm text-slate-500 mt-1">{session.description}</p>
-          </div>
-          <div className="grid grid-cols-2 gap-3 text-xs text-left bg-slate-50 rounded-2xl p-4">
+          <div className="grid grid-cols-2 gap-3 text-xs text-left bg-slate-50 rounded-2xl p-4 border border-slate-100">
             <div>
-              <p className="text-slate-400 font-semibold">Date</p>
+              <p className="text-slate-400 font-semibold text-[11px]">Date</p>
               <p className="font-bold text-slate-700">{session.date}</p>
             </div>
             <div>
-              <p className="text-slate-400 font-semibold">Time</p>
-              <p className="font-bold text-slate-700">{session.startTime} – {session.endTime || `+${session.durationMinutes}min`}</p>
+              <p className="text-slate-400 font-semibold text-[11px]">Time</p>
+              <p className="font-bold text-slate-700">{session.startTime} – {session.endTime || `+${session.durationMinutes}m`}</p>
             </div>
             <div>
-              <p className="text-slate-400 font-semibold">Instructor</p>
+              <p className="text-slate-400 font-semibold text-[11px]">Instructor</p>
               <p className="font-bold text-[#0077b6]">{session.instructorName}</p>
             </div>
             {session.courseTitle && (
               <div>
-                <p className="text-slate-400 font-semibold">Course</p>
+                <p className="text-slate-400 font-semibold text-[11px]">Course</p>
                 <p className="font-bold text-slate-700">{session.courseTitle}</p>
               </div>
             )}
           </div>
 
           {/* Admin-only: Start Session button */}
-          {user.role === 'admin' && (
+          {user.role === 'admin' ? (
             <button
               id="start-session-btn"
               onClick={handleStartSession}
-              className="w-full flex items-center justify-center gap-2 py-3.5 rounded-full bg-gradient-to-r from-red-500 to-rose-600 text-white font-extrabold text-sm shadow-lg shadow-red-200 hover:shadow-xl transition-all hover:scale-[1.02]"
+              className="w-full flex items-center justify-center gap-2 py-3 rounded-full bg-gradient-to-r from-red-500 to-rose-600 text-white font-extrabold text-xs shadow-md shadow-red-500/25 hover:shadow-lg transition-all active:scale-95"
             >
-              <Radio className="w-5 h-5" />
-              Start Live Session
+              <Radio className="w-4 h-4 animate-pulse" />
+              <span>Start Live Class & Enter</span>
             </button>
+          ) : (
+            <div className="p-3 rounded-2xl bg-blue-50 border border-blue-100 text-xs text-[#0077b6] font-medium">
+              Class has not started yet. You will enter automatically as soon as the instructor starts.
+            </div>
           )}
-          {user.role !== 'admin' && (
-            <p className="text-xs text-slate-400">
-              The live session hasn't started yet. You'll be able to join once the instructor begins the class.
-            </p>
-          )}
+
+          {/* 1 Back Button */}
+          <div className="pt-1">
+            <Link
+              href="/live"
+              className="w-full flex items-center justify-center gap-2 py-2.5 px-5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition active:scale-95"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span>Back to Live Classes</span>
+            </Link>
+          </div>
         </div>
       </div>
     );
