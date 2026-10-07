@@ -1,27 +1,11 @@
 'use client';
 
-import dynamic from 'next/dynamic';
-import React, { useRef } from 'react';
-import type { IJitsiMeetingProps } from '@jitsi/react-sdk/lib/types';
-import { AlertCircle } from 'lucide-react';
-
-// Dynamically import with ssr: false since Jitsi uses browser-only window APIs
-const JitsiMeeting = dynamic(
-  () => import('@jitsi/react-sdk').then((mod) => mod.JitsiMeeting),
-  {
-    ssr: false,
-    loading: () => (
-      <div className="flex-1 flex items-center justify-center bg-slate-900 min-h-[500px]">
-        <div className="text-center space-y-3">
-          <div className="w-12 h-12 border-4 border-cyan-400 border-t-transparent rounded-full animate-spin mx-auto" />
-          <p className="text-white/70 text-sm font-medium">Initializing Live Classroom...</p>
-        </div>
-      </div>
-    )
-  }
-);
+import React, { useEffect, useRef, useState } from 'react';
+import { AlertTriangle, Loader2 } from 'lucide-react';
 
 export interface JitsiClassroomProps {
+  sessionId?: string;
+  userId?: string;
   roomName: string;
   displayName: string;
   userEmail?: string;
@@ -36,6 +20,8 @@ export interface JitsiClassroomProps {
 }
 
 const JitsiClassroom: React.FC<JitsiClassroomProps> = ({
+  sessionId,
+  userId,
   roomName,
   displayName,
   userEmail,
@@ -48,137 +34,272 @@ const JitsiClassroom: React.FC<JitsiClassroomProps> = ({
   onParticipantLeft,
   onParticipantCountChanged
 }) => {
+  const containerRef = useRef<HTMLDivElement>(null);
   const apiRef = useRef<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [initError, setInitError] = useState<string | null>(null);
 
-  // Configurable conference domain via NEXT_PUBLIC_JITSI_DOMAIN / NEXT_PUBLIC_JAAS_APP_ID
-  const configuredDomain = process.env.NEXT_PUBLIC_JITSI_DOMAIN?.trim();
+  // Strict domain resolution: NEVER fall back to meet.jit.si in production
+  const domain = process.env.NEXT_PUBLIC_JITSI_DOMAIN?.trim();
   const jaasAppId = process.env.NEXT_PUBLIC_JAAS_APP_ID?.trim();
-  const jitsiDomain = configuredDomain || (jaasAppId ? '8x8.vc' : 'meet.jit.si');
-  const isPublicMeetJitsi = jitsiDomain === 'meet.jit.si' && !jaasAppId;
 
-  // In 8x8 JaaS, room names must be prefixed by the tenant App ID: <AppId>/<roomName>
-  const effectiveRoomName =
-    jaasAppId && !roomName.startsWith(`${jaasAppId}/`)
-      ? `${jaasAppId}/${roomName}`
-      : roomName;
+  // Compute script URL from configured domain and optional tenant App ID
+  const scriptUrl = domain
+    ? jaasAppId
+      ? `https://${domain}/${jaasAppId}/external_api.js`
+      : `https://${domain}/external_api.js`
+    : null;
 
-  const handleApiReady = (api: any) => {
-    apiRef.current = api;
+  // Runtime logging for verification
+  useEffect(() => {
+    if (domain && scriptUrl) {
+      console.log('Jitsi domain:', domain);
+      console.log('Jitsi external API URL:', scriptUrl);
+    }
+  }, [domain, scriptUrl]);
 
-    const updateCount = () => {
+  // Load external API script and instantiate JitsiMeetExternalAPI
+  useEffect(() => {
+    if (!domain || !scriptUrl) {
+      return;
+    }
+
+    let isMounted = true;
+    let countInterval: any = null;
+
+    const initMeeting = async () => {
       try {
-        if (api && typeof api.getNumberOfParticipants === 'function') {
-          const count = api.getNumberOfParticipants();
-          if (typeof count === 'number' && count >= 0) {
-            onParticipantCountChanged?.(count);
+        setLoading(true);
+        setInitError(null);
+
+        // 1. Fetch server-signed JaaS JWT if JaaS credentials exist
+        let jwtToken: string | null = null;
+        try {
+          const tokenRes = await fetch('/api/live/token', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              sessionId,
+              roomName,
+              isModerator: isInstructor,
+              userId,
+              userName: displayName,
+              userEmail,
+              userAvatarUrl
+            })
+          });
+
+          if (tokenRes.ok) {
+            const tokenData = await tokenRes.json();
+            if (tokenData.success && tokenData.token) {
+              jwtToken = tokenData.token;
+            } else if (tokenData.configured === false) {
+              console.info('JaaS Token Notice:', tokenData.error);
+            }
           }
+        } catch (tokenErr) {
+          console.warn('Could not contact /api/live/token, proceeding with direct room:', tokenErr);
         }
-      } catch {}
+
+        // 2. Ensure external_api.js script is loaded from configured domain
+        await new Promise<void>((resolve, reject) => {
+          if ((window as any).JitsiMeetExternalAPI) {
+            return resolve();
+          }
+
+          // Check if script tag already exists
+          const existingScript = document.querySelector(`script[src="${scriptUrl}"]`);
+          if (existingScript) {
+            existingScript.addEventListener('load', () => resolve());
+            existingScript.addEventListener('error', () => reject(new Error(`Failed to load ${scriptUrl}`)));
+            return;
+          }
+
+          const script = document.createElement('script');
+          script.src = scriptUrl;
+          script.async = true;
+          script.onload = () => resolve();
+          script.onerror = () => reject(new Error(`Failed to load Jitsi API script from ${scriptUrl}`));
+          document.head.appendChild(script);
+        });
+
+        if (!isMounted || !containerRef.current) return;
+
+        // Clean up any existing instance in container
+        if (apiRef.current) {
+          try {
+            apiRef.current.dispose();
+          } catch {}
+          apiRef.current = null;
+        }
+        containerRef.current.innerHTML = '';
+
+        // In 8x8 JaaS, both instructor and students must use: <appId>/<roomName>
+        const effectiveRoom = jaasAppId && !roomName.startsWith(`${jaasAppId}/`)
+          ? `${jaasAppId}/${roomName}`
+          : roomName;
+
+        const JitsiMeetExternalAPI = (window as any).JitsiMeetExternalAPI;
+        if (!JitsiMeetExternalAPI) {
+          throw new Error('JitsiMeetExternalAPI is undefined after script load.');
+        }
+
+        const options = {
+          roomName: effectiveRoom,
+          parentNode: containerRef.current,
+          jwt: jwtToken || undefined,
+          userInfo: {
+            displayName,
+            email: userEmail || ''
+          },
+          configOverwrite: {
+            startWithAudioMuted: false,
+            startWithVideoMuted: false,
+            disableDeepLinking: true,
+            enableNoisyMicDetection: true,
+            prejoinPageEnabled: false,
+            prejoinConfig: { enabled: false },
+            skipPrejoinScreen: true,
+            subject: sessionTitle || 'BookKeep-It Live Class',
+            requireDisplayName: true,
+            toolbarButtons: [
+              'microphone',
+              'camera',
+              'closedcaptions',
+              'desktop',
+              'fullscreen',
+              'fodeviceselection',
+              'hangup',
+              'participants-pane',
+              'raisehand',
+              'tileview',
+              'chat',
+              'videoquality',
+              'filmstrip',
+              'stats',
+              'shortcuts',
+              'mute-everyone'
+            ]
+          },
+          interfaceConfigOverwrite: {
+            SHOW_JITSI_WATERMARK: false,
+            SHOW_WATERMARK_FOR_GUESTS: false,
+            HIDE_INVITE_MORE_HEADER: true,
+            TOOLBAR_ALWAYS_VISIBLE: false,
+            MOBILE_APP_PROMO: false,
+            DISABLE_RINGING: true
+          }
+        };
+
+        const api = new JitsiMeetExternalAPI(domain, options);
+        apiRef.current = api;
+        setLoading(false);
+
+        // Update participant count helper
+        const updateCount = () => {
+          try {
+            if (api && typeof api.getNumberOfParticipants === 'function') {
+              const count = api.getNumberOfParticipants();
+              if (typeof count === 'number' && count >= 0) {
+                onParticipantCountChanged?.(count);
+              }
+            }
+          } catch {}
+        };
+
+        api.addEventListener('videoConferenceJoined', () => {
+          onJoined?.();
+          updateCount();
+        });
+
+        api.addEventListener('videoConferenceLeft', () => {
+          onLeft?.();
+          updateCount();
+        });
+
+        api.addEventListener('participantJoined', (e: any) => {
+          onParticipantJoined?.({ id: e.id, displayName: e.displayName || 'Participant' });
+          updateCount();
+        });
+
+        api.addEventListener('participantLeft', (e: any) => {
+          onParticipantLeft?.({ id: e.id });
+          updateCount();
+        });
+
+        countInterval = setInterval(updateCount, 1500);
+        setTimeout(updateCount, 600);
+      } catch (err: any) {
+        console.error('Jitsi initialization failure:', err);
+        if (isMounted) {
+          setInitError(err?.message || 'Failed to initialize live conference.');
+          setLoading(false);
+        }
+      }
     };
 
-    // Attach event listeners
-    api.addEventListener('videoConferenceJoined', () => {
-      onJoined?.();
-      updateCount();
-    });
+    initMeeting();
 
-    api.addEventListener('videoConferenceLeft', () => {
-      onLeft?.();
-      updateCount();
-    });
+    return () => {
+      isMounted = false;
+      if (countInterval) clearInterval(countInterval);
+      if (apiRef.current) {
+        try {
+          apiRef.current.dispose();
+        } catch {}
+        apiRef.current = null;
+      }
+    };
+  }, [domain, scriptUrl, roomName, jaasAppId, displayName, userEmail, userAvatarUrl, isInstructor, sessionId, userId, sessionTitle]);
 
-    api.addEventListener('participantJoined', (e: any) => {
-      onParticipantJoined?.({ id: e.id, displayName: e.displayName || 'Participant' });
-      updateCount();
-    });
-
-    api.addEventListener('participantLeft', (e: any) => {
-      onParticipantLeft?.({ id: e.id });
-      updateCount();
-    });
-
-    // Periodic count check to guarantee accuracy
-    const countTimer = setInterval(updateCount, 1500);
-    // Initial query
-    setTimeout(updateCount, 500);
-  };
-
-  const configOverwrite: IJitsiMeetingProps['configOverwrite'] = {
-    startWithAudioMuted: false,
-    startWithVideoMuted: false,
-    disableDeepLinking: true,
-    enableNoisyMicDetection: true,
-    prejoinPageEnabled: false,
-    prejoinConfig: {
-      enabled: false
-    },
-    skipPrejoinScreen: true,
-    toolbarButtons: [
-      'microphone',
-      'camera',
-      'closedcaptions',
-      'desktop',
-      'fullscreen',
-      'fodeviceselection',
-      'hangup',
-      'participants-pane',
-      'raisehand',
-      'tileview',
-      'chat',
-      'videoquality',
-      'filmstrip',
-      'stats',
-      'shortcuts',
-      'mute-everyone',
-    ],
-    subject: sessionTitle || 'BookKeep-It Live Class',
-    requireDisplayName: true,
-  };
-
-  const interfaceConfigOverwrite: IJitsiMeetingProps['interfaceConfigOverwrite'] = {
-    SHOW_JITSI_WATERMARK: false,
-    SHOW_WATERMARK_FOR_GUESTS: false,
-    HIDE_INVITE_MORE_HEADER: true,
-    TOOLBAR_ALWAYS_VISIBLE: false,
-    MOBILE_APP_PROMO: false,
-    DISABLE_RINGING: true,
-  };
+  // FAIL HARD IF DOMAIN IS NOT CONFIGURED: Do NOT silently fall back to meet.jit.si
+  if (!domain) {
+    return (
+      <div className="w-full h-full flex-1 min-h-[450px] flex items-center justify-center bg-slate-950 p-6 text-center">
+        <div className="max-w-md bg-rose-950/80 border border-rose-500/50 rounded-2xl p-6 text-rose-200 space-y-3 shadow-xl">
+          <AlertTriangle className="w-10 h-10 text-rose-400 mx-auto" />
+          <h3 className="font-bold text-lg text-white">Live Classroom Configuration Error</h3>
+          <p className="text-sm text-rose-300">
+            The Jitsi conference domain is not configured (<code className="bg-black/50 px-1 py-0.5 rounded text-rose-100">NEXT_PUBLIC_JITSI_DOMAIN</code> is missing).
+          </p>
+          <p className="text-xs text-rose-400 leading-relaxed">
+            Production will not silently fall back to the public demo server (<code className="bg-black/40 px-1 rounded">meet.jit.si</code>). Please configure <code className="bg-black/40 px-1 rounded text-white">NEXT_PUBLIC_JITSI_DOMAIN=8x8.vc</code> in your Vercel Environment Variables.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="w-full h-full flex-1 min-h-0 flex flex-col bg-slate-950 relative">
-      {/* Informative warning banner when using public meet.jit.si for transparency */}
-      {isInstructor && isPublicMeetJitsi && (
-        <div className="bg-amber-950/90 border-b border-amber-600/40 px-3 py-1.5 text-[11px] text-amber-200 flex items-center justify-between gap-2 shrink-0 z-20">
-          <div className="flex items-center gap-1.5 truncate">
-            <AlertCircle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-            <span className="truncate">
-              <strong>Notice:</strong> Conference is using public <code className="bg-black/30 px-1 py-0.5 rounded">meet.jit.si</code> (has ~5m embedded demo restriction). Set <code className="bg-black/30 px-1 py-0.5 rounded">NEXT_PUBLIC_JITSI_DOMAIN</code> for custom production Jitsi/JaaS.
-            </span>
+      {/* Loading State */}
+      {loading && (
+        <div className="absolute inset-0 z-10 flex items-center justify-center bg-slate-950/90 backdrop-blur-sm">
+          <div className="text-center space-y-3">
+            <Loader2 className="w-10 h-10 text-cyan-400 animate-spin mx-auto" />
+            <p className="text-white/80 text-sm font-semibold">Connecting to Live Classroom ({domain})...</p>
           </div>
         </div>
       )}
 
-      <div className="w-full h-full flex-1 min-h-0">
-        <JitsiMeeting
-          domain={jitsiDomain}
-          roomName={effectiveRoomName}
-          configOverwrite={configOverwrite}
-          interfaceConfigOverwrite={interfaceConfigOverwrite}
-          userInfo={{
-            displayName,
-            email: userEmail || ''
-          }}
-          onApiReady={handleApiReady}
-          getIFrameRef={(node) => {
-            if (node) {
-              node.style.width = '100%';
-              node.style.height = '100%';
-              node.style.flex = '1';
-              node.style.border = 'none';
-            }
-          }}
-        />
-      </div>
+      {/* Initialization Error State */}
+      {initError && (
+        <div className="absolute inset-0 z-20 flex items-center justify-center bg-slate-950/95 p-6">
+          <div className="max-w-md bg-rose-950/80 border border-rose-500/50 rounded-2xl p-6 text-rose-200 text-center space-y-2">
+            <AlertTriangle className="w-8 h-8 text-rose-400 mx-auto" />
+            <h4 className="font-bold text-white text-base">Conference Connection Failed</h4>
+            <p className="text-xs text-rose-300">{initError}</p>
+            <p className="text-[11px] text-rose-400">Target Domain: {domain}</p>
+          </div>
+        </div>
+      )}
+
+      {/* Conference Container */}
+      <div
+        ref={containerRef}
+        id="jaas-container"
+        className="w-full h-full flex-1 min-h-0 [&>iframe]:w-full [&>iframe]:h-full [&>iframe]:border-none [&>iframe]:flex-1"
+      />
     </div>
   );
 };

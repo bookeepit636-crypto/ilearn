@@ -837,9 +837,12 @@ export default function LiveSessionPage() {
         {/* Jitsi Classroom */}
         <div className="flex-1 h-full min-h-0 relative flex flex-col bg-slate-950">
           <JitsiClassroom
+            sessionId={session.id}
+            userId={user.id}
             roomName={session.meetingRoomId}
             displayName={user.name}
             userEmail={user.email}
+            userAvatarUrl={user.avatarUrl}
             isInstructor={user.role === 'admin'}
             sessionTitle={session.title}
             onJoined={handleJoined}
