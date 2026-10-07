@@ -133,3 +133,40 @@ export interface FAQItem {
   answer: string;
   category: 'Bookkeeping' | 'Quizzes & Grades' | 'Technical Support' | 'Account & Settings';
 }
+
+// ==========================================
+// LIVE CLASSES / GOOGLE MEET INTEGRATION
+// ==========================================
+
+export type LiveSessionStatus = 'scheduled' | 'live' | 'completed' | 'cancelled';
+
+export interface LiveSession {
+  id: string;
+  title: string;
+  description: string;
+  courseId?: string;
+  courseTitle?: string;
+  instructorName: string;
+  instructorId?: string;
+  date: string;           // YYYY-MM-DD
+  startTime: string;      // HH:mm
+  endTime?: string;       // HH:mm
+  durationMinutes: number;
+  meetingRoomId: string;  // Jitsi room name (unique, URL-safe)
+  status: LiveSessionStatus;
+  recordingUrl?: string;
+  attendeesCount?: number;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface LiveSessionParticipant {
+  id: string;
+  sessionId: string;
+  userId: string;
+  userName: string;
+  joinedAt: string;  // ISO timestamp
+  leftAt?: string;   // ISO timestamp
+  attendanceStatus: 'present' | 'late' | 'absent';
+  durationMinutes?: number;
+}

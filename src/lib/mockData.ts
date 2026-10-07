@@ -1,4 +1,4 @@
-import { Course, DownloadableMaterial, FAQItem, NotificationItem, Quiz, QuizSubmission, ScheduleItem, UserProfile, VideoLesson } from '@/types';
+import { Course, DownloadableMaterial, FAQItem, LiveSession, NotificationItem, Quiz, QuizSubmission, ScheduleItem, UserProfile, VideoLesson } from '@/types';
 
 export const initialProfile: UserProfile = {
   id: 'usr_001',
@@ -712,5 +712,65 @@ export const initialFAQs: FAQItem[] = [
     category: 'Account & Settings',
     question: 'How do I update my profile picture or change my password?',
     answer: 'Click on your profile avatar in the upper right header or navigate to "Profile" or "Settings" in the sidebar to update your account details, avatar, and security preferences.'
+  }
+];
+
+// ==========================================
+// INITIAL LIVE SESSIONS (Mock Data)
+// ==========================================
+
+export const initialLiveSessions: LiveSession[] = [
+  {
+    id: 'ls-001',
+    title: 'Trial Balance Adjustments – Live Review',
+    description: 'Interactive walkthrough of accrual and deferral adjusting entries with worked examples and Q&A.',
+    courseId: 'crs-1',
+    courseTitle: 'Bookkeeping Cycle',
+    instructorName: 'Prof. Eleanor Vance, CPA',
+    instructorId: 'usr_admin_001',
+    date: '2026-10-07',
+    startTime: '14:00',
+    endTime: '15:00',
+    durationMinutes: 60,
+    meetingRoomId: 'bookkeep-it-trial-balance-ls001',
+    status: 'live',
+    attendeesCount: 8,
+    createdAt: '2026-10-05T08:00:00Z',
+    updatedAt: '2026-10-07T14:00:00Z'
+  },
+  {
+    id: 'ls-002',
+    title: 'Financial Statements Masterclass',
+    description: 'Building the Income Statement and Balance Sheet from a complete adjusted trial balance worksheet.',
+    courseId: 'crs-6',
+    courseTitle: 'Financial Statements',
+    instructorName: 'Prof. Eleanor Vance, CPA',
+    instructorId: 'usr_admin_001',
+    date: '2026-10-10',
+    startTime: '13:00',
+    endTime: '14:30',
+    durationMinutes: 90,
+    meetingRoomId: 'bookkeep-it-financial-statements-ls002',
+    status: 'scheduled',
+    createdAt: '2026-10-05T09:00:00Z'
+  },
+  {
+    id: 'ls-003',
+    title: 'Debits & Credits Crash Course',
+    description: 'A complete visual walkthrough of T-accounts and normal balances. Recording available for replay.',
+    courseId: 'crs-2',
+    courseTitle: 'Basic Accounting Principles',
+    instructorName: 'Dr. Marcus Brody, CPA',
+    instructorId: 'usr_admin_001',
+    date: '2026-10-01',
+    startTime: '10:00',
+    endTime: '11:00',
+    durationMinutes: 60,
+    meetingRoomId: 'bookkeep-it-debits-credits-ls003',
+    status: 'completed',
+    recordingUrl: 'https://www.youtube.com/embed/VhwZ9t2b3Zk',
+    attendeesCount: 14,
+    createdAt: '2026-09-28T08:00:00Z',
+    updatedAt: '2026-10-01T11:05:00Z'
   }
 ];

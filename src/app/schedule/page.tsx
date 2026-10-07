@@ -1,17 +1,20 @@
 'use client';
 
 import React, { useState } from 'react';
+import Link from 'next/link';
 import {
   Calendar,
   CheckCircle2,
   Clock,
   Plus,
+  Radio,
   X
 } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
 
 export default function SchedulePage() {
-  const { schedules, addScheduleItem, toggleScheduleCompletion } = useApp();
+  const { schedules, addScheduleItem, toggleScheduleCompletion, liveSessions } = useApp();
+  const upcomingLiveSessions = liveSessions.filter((s) => s.status === 'live' || s.status === 'scheduled');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
 
   const [title, setTitle] = useState('');
@@ -58,6 +61,56 @@ export default function SchedulePage() {
           Add Study Reminder
         </button>
       </div>
+
+      {/* Live Class Sessions (synced) */}
+      {upcomingLiveSessions.length > 0 && (
+        <div className="space-y-3">
+          <h2 className="text-sm font-extrabold text-slate-600 flex items-center gap-2">
+            <Radio className="w-4 h-4 text-red-500" />
+            Live & Upcoming Classes
+          </h2>
+          {upcomingLiveSessions.map((session) => (
+            <div
+              key={session.id}
+              className={`card-theme p-4 rounded-2xl flex items-center gap-4 ${
+                session.status === 'live' ? 'ring-2 ring-red-400 ring-offset-2' : ''
+              }`}
+            >
+              <div className="shrink-0">
+                <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${
+                  session.status === 'live' ? 'bg-red-50' : 'bg-cyan-50'
+                }`}>
+                  <Radio className={`w-4 h-4 ${session.status === 'live' ? 'text-red-500' : 'text-cyan-600'}`} />
+                </div>
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-0.5">
+                  <span className={`text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full ${
+                    session.status === 'live' ? 'bg-red-500 text-white' : 'bg-cyan-100 text-cyan-700'
+                  }`}>
+                    {session.status === 'live' ? '🔴 LIVE NOW' : 'Live Meet'}
+                  </span>
+                </div>
+                <h3 className="text-sm font-bold text-slate-800 truncate">{session.title}</h3>
+                <p className="text-xs text-slate-500">
+                  {session.date} · {session.startTime}
+                  {session.instructorName ? ` · ${session.instructorName}` : ''}
+                </p>
+              </div>
+              <Link
+                href={`/live/${session.id}`}
+                className={`shrink-0 px-3 py-1.5 rounded-full font-bold text-xs ${
+                  session.status === 'live'
+                    ? 'bg-red-500 text-white hover:bg-red-600'
+                    : 'bg-[#00b4d8] text-white hover:bg-[#0077b6]'
+                } transition`}
+              >
+                {session.status === 'live' ? 'Join' : 'View'}
+              </Link>
+            </div>
+          ))}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {schedules.map((item) => (

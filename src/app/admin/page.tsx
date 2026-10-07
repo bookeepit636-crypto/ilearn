@@ -18,6 +18,7 @@ import {
   Paperclip,
   Plus,
   PlusCircle,
+  Radio,
   ShieldCheck,
   Trash2,
   Upload,
@@ -27,9 +28,10 @@ import {
   X
 } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
-import { Course, DownloadableMaterial, Lesson, Quiz, QuizQuestion, Topic, VideoLesson } from '@/types';
+import { Course, DownloadableMaterial, Lesson, LiveSession, LiveSessionStatus, Quiz, QuizQuestion, Topic, UserProfile, VideoLesson } from '@/types';
 import { uploadToCloudinary } from '@/lib/cloudinary';
 import { saveVideoBlob, deleteVideoBlob, generateVideoThumbnail } from '@/lib/videoStorage';
+import Link from 'next/link';
 
 export default function AdminPage() {
   const {
@@ -41,6 +43,7 @@ export default function AdminPage() {
     materials,
     quizzes,
     notifications,
+    liveSessions,
     addCourse,
     updateCourseTopics,
     deleteCourse,
@@ -50,6 +53,9 @@ export default function AdminPage() {
     deleteMaterial,
     addQuiz,
     broadcastAnnouncement,
+    addLiveSession,
+    updateLiveSession,
+    deleteLiveSession,
     adminTab,
     setAdminTab
   } = useApp();
@@ -535,7 +541,8 @@ export default function AdminPage() {
           { id: 'materials', label: 'Templates & Files', icon: Download, count: materials.length },
           { id: 'quizzes', label: 'Quiz & Exam Builder', icon: FileQuestion, count: quizzes.length },
           { id: 'users', label: 'Student Accounts', icon: Users, count: accounts.filter((a) => a.role === 'student').length },
-          { id: 'announcements', label: 'Announcements', icon: Megaphone, count: notifications.length }
+          { id: 'announcements', label: 'Announcements', icon: Megaphone, count: notifications.length },
+          { id: 'live', label: 'Live Classes', icon: Radio, count: liveSessions.length }
         ].map((tab) => {
           const Icon = tab.icon;
           const isActive = adminTab === tab.id;
@@ -1575,6 +1582,246 @@ export default function AdminPage() {
           </div>
         </div>
       )}
+
+      {/* TAB: LIVE CLASSES MANAGER */}
+      {adminTab === 'live' && (
+        <LiveClassesAdminPanel
+          liveSessions={liveSessions}
+          courses={courses}
+          user={user}
+          addLiveSession={addLiveSession}
+          updateLiveSession={updateLiveSession}
+          deleteLiveSession={deleteLiveSession}
+        />
+      )}
+    </div>
+  );
+}
+
+// ============================================================
+// LIVE CLASSES ADMIN PANEL (separate component for clarity)
+// ============================================================
+
+function LiveClassesAdminPanel({
+  liveSessions,
+  courses,
+  user,
+  addLiveSession,
+  updateLiveSession,
+  deleteLiveSession
+}: {
+  liveSessions: LiveSession[];
+  courses: Course[];
+  user: UserProfile;
+  addLiveSession: (s: Omit<LiveSession, 'id' | 'createdAt' | 'attendeesCount'>) => void;
+  updateLiveSession: (id: string, u: Partial<LiveSession>) => void;
+  deleteLiveSession: (id: string) => void;
+}) {
+  const [lsTitle, setLsTitle] = useState('');
+  const [lsDesc, setLsDesc] = useState('');
+  const [lsCourseId, setLsCourseId] = useState('');
+  const [lsDate, setLsDate] = useState(new Date().toISOString().split('T')[0]);
+  const [lsStart, setLsStart] = useState('14:00');
+  const [lsEnd, setLsEnd] = useState('15:00');
+  const [lsDuration, setLsDuration] = useState(60);
+
+  const statusPill: Record<LiveSessionStatus, string> = {
+    live: 'bg-red-500 text-white',
+    scheduled: 'bg-cyan-100 text-cyan-700',
+    completed: 'bg-emerald-100 text-emerald-700',
+    cancelled: 'bg-slate-100 text-slate-500'
+  };
+
+  const handleCreate = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!lsTitle) return;
+    const selectedCourse = courses.find((c) => c.id === lsCourseId);
+    // Generate a unique, URL-safe room name
+    const roomId = `bookkeep-it-${lsTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 40)}-${Date.now()}`;
+    addLiveSession({
+      title: lsTitle,
+      description: lsDesc || 'Live bookkeeping class session.',
+      courseId: lsCourseId || undefined,
+      courseTitle: selectedCourse?.title,
+      instructorName: user.name,
+      instructorId: user.id,
+      date: lsDate,
+      startTime: lsStart,
+      endTime: lsEnd,
+      durationMinutes: lsDuration,
+      meetingRoomId: roomId,
+      status: 'scheduled'
+    });
+    setLsTitle('');
+    setLsDesc('');
+    alert('Live class session scheduled successfully!');
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Create New Session */}
+      <div className="card-theme p-6 rounded-3xl bg-white border border-slate-100 space-y-4">
+        <h3 className="text-base font-bold text-slate-800 flex items-center gap-2 border-b border-slate-100 pb-2">
+          <Plus className="w-4 h-4 text-indigo-600" />
+          Schedule New Live Class
+        </h3>
+        <form onSubmit={handleCreate} className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+          <div className="md:col-span-2">
+            <label className="block text-slate-700 font-semibold mb-1">Session Title</label>
+            <input
+              type="text"
+              required
+              value={lsTitle}
+              onChange={(e) => setLsTitle(e.target.value)}
+              placeholder="e.g. Trial Balance Adjustments – Live Review"
+              className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-800 focus:outline-none focus:border-indigo-600"
+            />
+          </div>
+          <div className="md:col-span-2">
+            <label className="block text-slate-700 font-semibold mb-1">Description</label>
+            <textarea
+              rows={2}
+              value={lsDesc}
+              onChange={(e) => setLsDesc(e.target.value)}
+              placeholder="Brief agenda or topic for this live session..."
+              className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-800 focus:outline-none focus:border-indigo-600 resize-none"
+            />
+          </div>
+          <div>
+            <label className="block text-slate-700 font-semibold mb-1">Link to Course (optional)</label>
+            <select
+              value={lsCourseId}
+              onChange={(e) => setLsCourseId(e.target.value)}
+              className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-800 focus:outline-none focus:border-indigo-600"
+            >
+              <option value="">-- No specific course --</option>
+              {courses.map((c) => (
+                <option key={c.id} value={c.id}>{c.title}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-slate-700 font-semibold mb-1">Duration (minutes)</label>
+            <input
+              type="number"
+              min={15}
+              max={240}
+              value={lsDuration}
+              onChange={(e) => setLsDuration(Number(e.target.value))}
+              className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-800 focus:outline-none focus:border-indigo-600"
+            />
+          </div>
+          <div>
+            <label className="block text-slate-700 font-semibold mb-1">Date</label>
+            <input
+              type="date"
+              required
+              value={lsDate}
+              onChange={(e) => setLsDate(e.target.value)}
+              className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-800 focus:outline-none focus:border-indigo-600"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="block text-slate-700 font-semibold mb-1">Start Time</label>
+              <input
+                type="time"
+                required
+                value={lsStart}
+                onChange={(e) => setLsStart(e.target.value)}
+                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-800 focus:outline-none focus:border-indigo-600"
+              />
+            </div>
+            <div>
+              <label className="block text-slate-700 font-semibold mb-1">End Time</label>
+              <input
+                type="time"
+                value={lsEnd}
+                onChange={(e) => setLsEnd(e.target.value)}
+                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-800 focus:outline-none focus:border-indigo-600"
+              />
+            </div>
+          </div>
+          <div className="md:col-span-2 flex justify-end pt-2">
+            <button
+              type="submit"
+              className="px-6 py-2.5 rounded-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs flex items-center gap-2 shadow-md shadow-indigo-600/20 transition"
+            >
+              <Radio className="w-4 h-4" />
+              Schedule Live Class
+            </button>
+          </div>
+        </form>
+      </div>
+
+      {/* Sessions List */}
+      <div className="card-theme p-6 rounded-3xl bg-white border border-slate-100 space-y-4">
+        <h3 className="text-base font-bold text-slate-800 border-b border-slate-100 pb-2">All Live Sessions ({liveSessions.length})</h3>
+        <div className="space-y-3">
+          {liveSessions.length === 0 && (
+            <p className="text-xs text-slate-400 text-center py-8">No live sessions yet. Schedule your first class above.</p>
+          )}
+          {liveSessions.map((session) => (
+            <div key={session.id} className="flex flex-col sm:flex-row sm:items-center gap-3 p-4 rounded-2xl bg-slate-50 border border-slate-200">
+              <div className="flex-1 min-w-0 space-y-0.5">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className={`text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full ${statusPill[session.status]}`}>
+                    {session.status === 'live' ? '🔴 Live' : session.status}
+                  </span>
+                  {session.courseTitle && (
+                    <span className="text-[10px] text-[#0077b6] font-bold">{session.courseTitle}</span>
+                  )}
+                </div>
+                <p className="text-sm font-bold text-slate-800 truncate">{session.title}</p>
+                <p className="text-xs text-slate-500">{session.date} · {session.startTime}{session.endTime ? ` – ${session.endTime}` : ''}</p>
+              </div>
+              <div className="flex items-center gap-2 shrink-0 flex-wrap">
+                {/* Status control buttons */}
+                {session.status === 'scheduled' && (
+                  <button
+                    onClick={() => updateLiveSession(session.id, { status: 'live' })}
+                    className="px-3 py-1.5 rounded-full bg-red-500 hover:bg-red-600 text-white font-bold text-[11px] flex items-center gap-1 transition"
+                  >
+                    <Radio className="w-3 h-3" /> Go Live
+                  </button>
+                )}
+                {session.status === 'live' && (
+                  <>
+                    <Link
+                      href={`/live/${session.id}`}
+                      className="px-3 py-1.5 rounded-full bg-green-600 hover:bg-green-700 text-white font-bold text-[11px] flex items-center gap-1 transition"
+                    >
+                      <Radio className="w-3 h-3" /> Enter Room
+                    </Link>
+                    <button
+                      onClick={() => updateLiveSession(session.id, { status: 'completed' })}
+                      className="px-3 py-1.5 rounded-full bg-slate-700 hover:bg-slate-800 text-white font-bold text-[11px] flex items-center gap-1 transition"
+                    >
+                      <CheckCircle2 className="w-3 h-3" /> End Session
+                    </button>
+                  </>
+                )}
+                {session.status === 'scheduled' && (
+                  <button
+                    onClick={() => updateLiveSession(session.id, { status: 'cancelled' })}
+                    className="px-3 py-1.5 rounded-full bg-amber-100 text-amber-700 font-bold text-[11px] flex items-center gap-1 transition hover:bg-amber-200"
+                  >
+                    Cancel
+                  </button>
+                )}
+                <button
+                  onClick={() => {
+                    if (confirm(`Delete "${session.title}"?`)) deleteLiveSession(session.id);
+                  }}
+                  className="p-1.5 rounded-full text-slate-400 hover:text-red-500 hover:bg-red-50 transition"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }

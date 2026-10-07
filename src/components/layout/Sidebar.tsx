@@ -13,6 +13,7 @@ import {
   HelpCircle,
   LayoutGrid,
   Megaphone,
+  Radio,
   ShieldCheck,
   Users,
   Video,
@@ -23,7 +24,9 @@ import { useApp, AdminTabType } from '@/context/AppContext';
 export const Sidebar: React.FC = () => {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, toggleRole, adminTab, setAdminTab, isMobileSidebarOpen, setIsMobileSidebarOpen } = useApp();
+  const { user, toggleRole, adminTab, setAdminTab, isMobileSidebarOpen, setIsMobileSidebarOpen, liveSessions } = useApp();
+
+  const isAnyLive = liveSessions.some((s) => s.status === 'live');
 
   const studentNavItems = [
     { name: 'Dashboard', href: '/', icon: LayoutGrid },
@@ -32,7 +35,8 @@ export const Sidebar: React.FC = () => {
     { name: 'Templates', href: '/downloads', icon: FileText },
     { name: 'Quizzes', href: '/quizzes', icon: FileQuestion },
     { name: 'Progress', href: '/progress', icon: BarChart3 },
-    { name: 'Schedule', href: '/schedule', icon: Calendar }
+    { name: 'Schedule', href: '/schedule', icon: Calendar },
+    { name: 'Live Classes', href: '/live', icon: Radio, badge: isAnyLive ? 'LIVE' : undefined }
   ];
 
   const adminNavItems: Array<{ name: string; tab: AdminTabType; icon: React.ElementType }> = [
@@ -41,7 +45,8 @@ export const Sidebar: React.FC = () => {
     { name: 'Templates & Files', tab: 'materials', icon: FileText },
     { name: 'Quiz & Exam Builder', tab: 'quizzes', icon: FileQuestion },
     { name: 'Student Accounts', tab: 'users', icon: Users },
-    { name: 'Announcements', tab: 'announcements', icon: Megaphone }
+    { name: 'Announcements', tab: 'announcements', icon: Megaphone },
+    { name: 'Live Classes', tab: 'live', icon: Radio }
   ];
 
   const sidebarContent = (
@@ -127,7 +132,7 @@ export const Sidebar: React.FC = () => {
             </>
           ) : (
             studentNavItems.map((item) => {
-              const isActive = pathname === item.href;
+              const isActive = pathname === item.href || (item.href !== '/' && pathname.startsWith(item.href));
               const Icon = item.icon;
 
               return (
@@ -142,7 +147,12 @@ export const Sidebar: React.FC = () => {
                   }`}
                 >
                   <Icon className={`w-4 h-4 ${isActive ? 'text-[#0077b6]' : 'text-white'}`} />
-                  <span>{item.name}</span>
+                  <span className="flex-1">{item.name}</span>
+                  {'badge' in item && item.badge && (
+                    <span className="text-[9px] font-extrabold px-1.5 py-0.5 rounded-full bg-red-500 text-white animate-pulse">
+                      {item.badge}
+                    </span>
+                  )}
                 </Link>
               );
             })

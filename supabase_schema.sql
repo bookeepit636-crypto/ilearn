@@ -147,4 +147,51 @@ CREATE POLICY "Allow public insert to submissions" ON public.quiz_submissions FO
 CREATE POLICY "Allow public insert to notifications" ON public.notifications FOR INSERT WITH CHECK (true);
 CREATE POLICY "Allow public update to notifications" ON public.notifications FOR UPDATE USING (true);
 
+-- 8. LIVE SESSIONS TABLE
+CREATE TABLE IF NOT EXISTS public.live_sessions (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  description TEXT,
+  course_id TEXT REFERENCES public.courses(id) ON DELETE SET NULL,
+  course_title TEXT,
+  instructor_id UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
+  instructor_name TEXT NOT NULL,
+  date TEXT NOT NULL,
+  start_time TEXT NOT NULL,
+  end_time TEXT,
+  duration_minutes INT DEFAULT 60,
+  room_name TEXT NOT NULL UNIQUE,
+  status TEXT NOT NULL DEFAULT 'scheduled', -- 'scheduled', 'live', 'completed', 'cancelled'
+  attendees_count INT DEFAULT 0,
+  recording_url TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 9. LIVE ATTENDANCE TABLE
+CREATE TABLE IF NOT EXISTS public.live_attendance (
+  id TEXT PRIMARY KEY,
+  session_id TEXT REFERENCES public.live_sessions(id) ON DELETE CASCADE,
+  user_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE,
+  user_name TEXT NOT NULL,
+  user_email TEXT,
+  joined_at TIMESTAMPTZ DEFAULT NOW(),
+  left_at TIMESTAMPTZ,
+  duration_minutes INT DEFAULT 0,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ENABLE RLS
+ALTER TABLE public.live_sessions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.live_attendance ENABLE ROW LEVEL SECURITY;
+
+-- POLICIES FOR LIVE SESSIONS & ATTENDANCE
+CREATE POLICY "Allow public read access to live_sessions" ON public.live_sessions FOR SELECT USING (true);
+CREATE POLICY "Allow public insert to live_sessions" ON public.live_sessions FOR INSERT WITH CHECK (true);
+CREATE POLICY "Allow public update to live_sessions" ON public.live_sessions FOR UPDATE USING (true);
+CREATE POLICY "Allow public delete to live_sessions" ON public.live_sessions FOR DELETE USING (true);
+
+CREATE POLICY "Allow public read access to live_attendance" ON public.live_attendance FOR SELECT USING (true);
+CREATE POLICY "Allow public insert to live_attendance" ON public.live_attendance FOR INSERT WITH CHECK (true);
+CREATE POLICY "Allow public update to live_attendance" ON public.live_attendance FOR UPDATE USING (true);
+
 

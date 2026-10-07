@@ -12,13 +12,16 @@ import {
   FileQuestion,
   Flame,
   Megaphone,
+  Radio,
   TrendingUp,
   Video
 } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
 
 export default function DashboardPage() {
-  const { user, courses, notifications, schedules } = useApp();
+  const { user, courses, notifications, schedules, liveSessions } = useApp();
+
+  const liveNow = liveSessions.filter((s) => s.status === 'live');
 
   const announcements = notifications.filter((n) => n.category === 'announcement').slice(0, 2);
   const upcomingEvents = schedules.filter((s) => !s.isCompleted).slice(0, 3);
@@ -30,6 +33,37 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-8 animate-in fade-in duration-300">
+      {/* Live Now Alert Banner */}
+      {liveNow.length > 0 && (
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-red-500 to-rose-600 p-4 md:p-5 text-white shadow-lg shadow-red-200">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
+                <Radio className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2 mb-0.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+                  <span className="text-[10px] font-extrabold uppercase tracking-wide text-red-100">Live Now</span>
+                </div>
+                <p className="font-bold text-sm leading-tight">{liveNow[0].title}</p>
+                <p className="text-red-100 text-xs">
+                  {liveNow[0].instructorName}
+                  {liveNow[0].courseTitle ? ` · ${liveNow[0].courseTitle}` : ''}
+                </p>
+              </div>
+            </div>
+            <Link
+              href={`/live/${liveNow[0].id}`}
+              id="dashboard-join-live-btn"
+              className="shrink-0 flex items-center gap-2 px-5 py-2.5 bg-white text-red-600 rounded-full font-extrabold text-xs shadow hover:shadow-md transition"
+            >
+              <Radio className="w-3.5 h-3.5" />
+              Join Live Class
+            </Link>
+          </div>
+        </div>
+      )}
       {/* Welcome Banner */}
       <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-[#00b4d8] via-[#0077b6] to-[#023e8a] p-6 md:p-8 text-white shadow-xl">
         <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">

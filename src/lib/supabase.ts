@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { VideoLesson } from '@/types';
+import { LiveSession, LiveSessionStatus, VideoLesson } from '@/types';
 
 // Read environment variables with fallback defaults to ensure seamless Vercel production deployment
 const supabaseUrl =
@@ -156,4 +156,127 @@ export async function supabaseLogout() {
     // ignore
   }
 }
+
+// ==========================================
+// LIVE SESSIONS DATABASE PERSISTENCE
+// ==========================================
+
+export async function fetchLiveSessionsFromSupabase(): Promise<LiveSession[]> {
+  if (!isSupabaseConfigured()) return [];
+  try {
+    const { data, error } = await supabase
+      .from('live_sessions')
+      .select('*')
+      .order('date', { ascending: true });
+
+    if (error) {
+      console.warn('Supabase fetch live_sessions note:', error.message);
+      return [];
+    }
+
+    if (!data || !Array.isArray(data)) return [];
+
+    return data.map((row: any) => ({
+      id: row.id,
+      title: row.title,
+      description: row.description || '',
+      courseId: row.course_id || undefined,
+      courseTitle: row.course_title || undefined,
+      instructorId: row.instructor_id || undefined,
+      instructorName: row.instructor_name || 'Instructor',
+      date: row.date,
+      startTime: row.start_time,
+      endTime: row.end_time || undefined,
+      durationMinutes: row.duration_minutes || 60,
+      meetingRoomId: row.room_name,
+      status: row.status as LiveSessionStatus,
+      recordingUrl: row.recording_url || undefined,
+      attendeesCount: row.attendees_count || 0,
+      createdAt: row.created_at
+    }));
+  } catch (err) {
+    console.warn('Failed to fetch live_sessions from Supabase:', err);
+    return [];
+  }
+}
+
+export async function saveLiveSessionToSupabase(session: LiveSession): Promise<boolean> {
+  if (!isSupabaseConfigured()) return false;
+  try {
+    const { error } = await supabase.from('live_sessions').upsert(
+      {
+        id: session.id,
+        title: session.title,
+        description: session.description,
+        course_id: session.courseId || null,
+        course_title: session.courseTitle || null,
+        instructor_id: session.instructorId || null,
+        instructor_name: session.instructorName,
+        date: session.date,
+        start_time: session.startTime,
+        end_time: session.endTime || null,
+        duration_minutes: session.durationMinutes,
+        room_name: session.meetingRoomId,
+        status: session.status,
+        recording_url: session.recordingUrl || null,
+        attendees_count: session.attendeesCount || 0
+      },
+      { onConflict: 'id' }
+    );
+
+    if (error) {
+      console.warn('Supabase save live_session warning:', error.message);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.warn('Failed to save live_session to Supabase:', err);
+    return false;
+  }
+}
+
+export async function deleteLiveSessionFromSupabase(id: string): Promise<boolean> {
+  if (!isSupabaseConfigured()) return false;
+  try {
+    const { error } = await supabase.from('live_sessions').delete().eq('id', id);
+    if (error) {
+      console.warn('Supabase delete live_session warning:', error.message);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.warn('Failed to delete live_session from Supabase:', err);
+    return false;
+  }
+}
+
+export async function recordAttendanceToSupabase(attendance: {
+  id: string;
+  sessionId: string;
+  userId?: string;
+  userName: string;
+  userEmail?: string;
+  durationMinutes?: number;
+}): Promise<boolean> {
+  if (!isSupabaseConfigured()) return false;
+  try {
+    const { error } = await supabase.from('live_attendance').upsert({
+      id: attendance.id,
+      session_id: attendance.sessionId,
+      user_id: attendance.userId || null,
+      user_name: attendance.userName,
+      user_email: attendance.userEmail || null,
+      duration_minutes: attendance.durationMinutes || 0
+    });
+    if (error) {
+      console.warn('Supabase record attendance note:', error.message);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.warn('Failed to record attendance to Supabase:', err);
+    return false;
+  }
+}
+
 

@@ -1,0 +1,480 @@
+'use client';
+
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useParams, useRouter } from 'next/navigation';
+import Link from 'next/link';
+import {
+  AlertTriangle,
+  ArrowLeft,
+  BookOpen,
+  Calendar,
+  Camera,
+  CameraOff,
+  CheckCircle2,
+  Clock,
+  Mic,
+  MicOff,
+  Play,
+  Radio,
+  Users,
+  XCircle
+} from 'lucide-react';
+import { useApp } from '@/context/AppContext';
+import { LiveSession } from '@/types';
+import { recordAttendanceToSupabase } from '@/lib/supabase';
+import dynamic from 'next/dynamic';
+
+// Dynamically import the Jitsi classroom (browser-only)
+const JitsiClassroom = dynamic(
+  () => import('@/components/live/JitsiClassroom'),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex-1 flex items-center justify-center bg-slate-900">
+        <div className="text-center space-y-3">
+          <div className="w-12 h-12 border-4 border-cyan-400 border-t-transparent rounded-full animate-spin mx-auto" />
+          <p className="text-white/70 text-sm font-medium">Loading classroom...</p>
+        </div>
+      </div>
+    )
+  }
+);
+
+type PageState = 'loading' | 'waiting' | 'prejoin' | 'live' | 'completed' | 'cancelled' | 'not-found' | 'unauthorized';
+
+function PreJoinScreen({
+  session,
+  user,
+  onJoin
+}: {
+  session: LiveSession;
+  user: { name: string; role: string };
+  onJoin: () => void;
+}) {
+  const [micOn, setMicOn] = useState(false);
+  const [camOn, setCamOn] = useState(true);
+
+  return (
+    <div className="min-h-[80vh] flex items-center justify-center px-4">
+      <div className="bg-white border border-slate-200 rounded-3xl shadow-2xl w-full max-w-lg p-8 space-y-6 animate-in zoom-in-95 duration-300">
+        {/* Header */}
+        <div className="text-center space-y-1">
+          <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-cyan-400 to-blue-600 flex items-center justify-center mx-auto shadow-lg shadow-blue-200 mb-3">
+            <Radio className="w-7 h-7 text-white" />
+          </div>
+          <h2 className="text-xl font-black text-slate-800">Ready to join?</h2>
+          <p className="text-sm text-slate-500 font-medium line-clamp-1">{session.title}</p>
+        </div>
+
+        {/* Session Info */}
+        <div className="bg-slate-50 rounded-2xl p-4 space-y-2 text-xs">
+          {session.courseTitle && (
+            <div className="flex items-center gap-2 text-slate-600">
+              <BookOpen className="w-3.5 h-3.5 text-[#0077b6]" />
+              <span className="font-semibold text-[#0077b6]">{session.courseTitle}</span>
+            </div>
+          )}
+          <div className="flex items-center gap-2 text-slate-600">
+            <Calendar className="w-3.5 h-3.5" />
+            {session.date} at {session.startTime}
+            {session.endTime ? ` – ${session.endTime}` : ` · ${session.durationMinutes} min`}
+          </div>
+          <div className="flex items-center gap-2 text-slate-600">
+            <Users className="w-3.5 h-3.5" />
+            Instructor: <span className="font-bold text-slate-700">{session.instructorName}</span>
+          </div>
+        </div>
+
+        {/* Device Controls */}
+        <div className="space-y-2">
+          <p className="text-xs font-bold text-slate-500 uppercase tracking-wide">Your Devices</p>
+          <div className="flex items-center gap-3">
+            <button
+              id="prejoin-toggle-mic"
+              onClick={() => setMicOn((v) => !v)}
+              className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-2xl font-bold text-sm transition-all ${
+                micOn
+                  ? 'bg-green-50 text-green-700 border-2 border-green-300'
+                  : 'bg-slate-100 text-slate-500 border-2 border-slate-200'
+              }`}
+            >
+              {micOn ? <Mic className="w-4 h-4" /> : <MicOff className="w-4 h-4" />}
+              {micOn ? 'Mic On' : 'Mic Off'}
+            </button>
+            <button
+              id="prejoin-toggle-cam"
+              onClick={() => setCamOn((v) => !v)}
+              className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-2xl font-bold text-sm transition-all ${
+                camOn
+                  ? 'bg-green-50 text-green-700 border-2 border-green-300'
+                  : 'bg-slate-100 text-slate-500 border-2 border-slate-200'
+              }`}
+            >
+              {camOn ? <Camera className="w-4 h-4" /> : <CameraOff className="w-4 h-4" />}
+              {camOn ? 'Camera On' : 'Camera Off'}
+            </button>
+          </div>
+          <p className="text-[11px] text-slate-400 text-center">
+            You can adjust mic and camera after joining using the in-class controls.
+          </p>
+        </div>
+
+        {/* User Identity */}
+        <div className="bg-blue-50 rounded-xl px-4 py-2.5 text-xs text-slate-600">
+          Joining as <span className="font-extrabold text-[#0077b6]">{user.name}</span>
+          {user.role === 'admin' ? ' (Instructor)' : ' (Student)'}
+        </div>
+
+        {/* Join CTA */}
+        <button
+          id="prejoin-join-btn"
+          onClick={onJoin}
+          className="w-full flex items-center justify-center gap-2 py-3.5 rounded-full bg-gradient-to-r from-[#00b4d8] to-[#0077b6] text-white font-extrabold text-sm shadow-lg shadow-cyan-200 hover:shadow-xl transition-all hover:scale-[1.02]"
+        >
+          <Play className="w-5 h-5" />
+          Join Live Class
+        </button>
+      </div>
+    </div>
+  );
+}
+
+export default function LiveSessionPage() {
+  const params = useParams();
+  const router = useRouter();
+  const { user, liveSessions, updateLiveSession } = useApp();
+
+  const sessionId = params?.sessionId as string;
+  const [session, setSession] = useState<LiveSession | null>(null);
+  const [pageState, setPageState] = useState<PageState>('loading');
+  const [hasJoined, setHasJoined] = useState(false);
+  const [participantCount, setParticipantCount] = useState(0);
+  const joinTimeRef = useRef<string | null>(null);
+
+  // Resolve session from context
+  useEffect(() => {
+    if (!sessionId) {
+      setPageState('not-found');
+      return;
+    }
+    const found = liveSessions.find((s) => s.id === sessionId);
+    if (!found) {
+      setPageState('not-found');
+      return;
+    }
+    setSession(found);
+
+    switch (found.status) {
+      case 'scheduled':
+        setPageState('waiting');
+        break;
+      case 'live':
+        setPageState('prejoin');
+        break;
+      case 'completed':
+        setPageState('completed');
+        break;
+      case 'cancelled':
+        setPageState('cancelled');
+        break;
+      default:
+        setPageState('not-found');
+    }
+  }, [sessionId, liveSessions]);
+
+  // Handle confirmed classroom entry (attendance tracking)
+  const handleJoined = useCallback(() => {
+    joinTimeRef.current = new Date().toISOString();
+    setHasJoined(true);
+    // Increment attendees count in session state
+    if (session) {
+      updateLiveSession(session.id, {
+        attendeesCount: (session.attendeesCount ?? 0) + 1
+      });
+      // Record attendance to Supabase Cloud
+      recordAttendanceToSupabase({
+        id: `att-${session.id}-${Date.now()}`,
+        sessionId: session.id,
+        userName: user?.name || 'Student',
+        userEmail: user?.email,
+        durationMinutes: session.durationMinutes || 60
+      });
+    }
+  }, [session, updateLiveSession, user]);
+
+  const handleLeft = useCallback(() => {
+    // When a participant leaves we could record left_at. For now just navigate back.
+    router.push('/live');
+  }, [router]);
+
+  const handleParticipantJoined = useCallback(() => {
+    setParticipantCount((c) => c + 1);
+  }, []);
+
+  const handleParticipantLeft = useCallback(() => {
+    setParticipantCount((c) => Math.max(0, c - 1));
+  }, []);
+
+  // Instructor: start a session from waiting state
+  const handleStartSession = useCallback(() => {
+    if (!session) return;
+    updateLiveSession(session.id, { status: 'live' });
+    setPageState('prejoin');
+  }, [session, updateLiveSession]);
+
+  // Instructor: end session
+  const handleEndSession = useCallback(() => {
+    if (!session) return;
+    updateLiveSession(session.id, { status: 'completed' });
+    router.push('/live');
+  }, [session, updateLiveSession, router]);
+
+  /* ------------------------------------------------------------------ */
+  /*  RENDER STATES                                                       */
+  /* ------------------------------------------------------------------ */
+
+  if (pageState === 'loading') {
+    return (
+      <div className="flex-1 flex items-center justify-center min-h-[60vh]">
+        <div className="w-10 h-10 border-4 border-cyan-400 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  if (pageState === 'not-found') {
+    return (
+      <div className="text-center py-24 space-y-4">
+        <AlertTriangle className="w-12 h-12 text-amber-400 mx-auto" />
+        <h2 className="text-xl font-black text-slate-700">Session Not Found</h2>
+        <p className="text-sm text-slate-500">This live class does not exist or has been removed.</p>
+        <Link href="/live" className="inline-flex items-center gap-2 text-[#0077b6] font-bold text-sm hover:underline">
+          <ArrowLeft className="w-4 h-4" /> Back to Live Classes
+        </Link>
+      </div>
+    );
+  }
+
+  if (!session) return null;
+
+  if (pageState === 'cancelled') {
+    return (
+      <div className="text-center py-24 space-y-4">
+        <XCircle className="w-12 h-12 text-slate-400 mx-auto" />
+        <h2 className="text-xl font-black text-slate-700">Session Cancelled</h2>
+        <p className="text-sm text-slate-500">{session.title} has been cancelled.</p>
+        <Link href="/live" className="inline-flex items-center gap-2 text-[#0077b6] font-bold text-sm hover:underline">
+          <ArrowLeft className="w-4 h-4" /> Back to Live Classes
+        </Link>
+      </div>
+    );
+  }
+
+  if (pageState === 'completed') {
+    return (
+      <div className="space-y-8 animate-in fade-in duration-300">
+        <div className="flex items-center gap-3 border-b border-slate-200/80 pb-4">
+          <Link href="/live" className="text-slate-400 hover:text-slate-700 transition">
+            <ArrowLeft className="w-5 h-5" />
+          </Link>
+          <div>
+            <h1 className="text-xl font-black text-slate-800">{session.title}</h1>
+            <p className="text-xs text-slate-500">Session Completed · {session.date}</p>
+          </div>
+        </div>
+
+        {session.recordingUrl ? (
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="w-5 h-5 text-emerald-500" />
+              <h2 className="font-black text-slate-700 text-base">Session Recording Available</h2>
+            </div>
+            <div className="rounded-2xl overflow-hidden shadow-lg aspect-video bg-slate-900">
+              <iframe
+                src={session.recordingUrl}
+                title="Session Recording"
+                className="w-full h-full"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowFullScreen
+              />
+            </div>
+            <p className="text-xs text-slate-500">
+              Instructor: <span className="font-bold text-slate-600">{session.instructorName}</span>
+              {session.attendeesCount ? ` · ${session.attendeesCount} attended` : ''}
+            </p>
+          </div>
+        ) : (
+          <div className="card-theme p-8 rounded-3xl text-center space-y-3">
+            <CheckCircle2 className="w-10 h-10 text-emerald-500 mx-auto" />
+            <h2 className="font-bold text-slate-700">Session has ended</h2>
+            <p className="text-sm text-slate-400">No recording is available for this session.</p>
+          </div>
+        )}
+        <Link href="/live" className="inline-flex items-center gap-2 text-[#0077b6] font-bold text-sm hover:underline">
+          <ArrowLeft className="w-4 h-4" /> Back to Live Classes
+        </Link>
+      </div>
+    );
+  }
+
+  if (pageState === 'waiting') {
+    return (
+      <div className="space-y-6 animate-in fade-in duration-300">
+        <div className="flex items-center gap-3 border-b border-slate-200/80 pb-4">
+          <Link href="/live" className="text-slate-400 hover:text-slate-700 transition">
+            <ArrowLeft className="w-5 h-5" />
+          </Link>
+          <div>
+            <h1 className="text-xl font-black text-slate-800">{session.title}</h1>
+            <p className="text-xs text-slate-500">Upcoming · {session.date} at {session.startTime}</p>
+          </div>
+        </div>
+
+        <div className="card-theme p-8 rounded-3xl space-y-5 max-w-lg mx-auto text-center">
+          <div className="w-16 h-16 rounded-2xl bg-cyan-50 flex items-center justify-center mx-auto">
+            <Clock className="w-8 h-8 text-cyan-600" />
+          </div>
+          <div>
+            <h2 className="font-black text-slate-800 text-lg">{session.title}</h2>
+            <p className="text-sm text-slate-500 mt-1">{session.description}</p>
+          </div>
+          <div className="grid grid-cols-2 gap-3 text-xs text-left bg-slate-50 rounded-2xl p-4">
+            <div>
+              <p className="text-slate-400 font-semibold">Date</p>
+              <p className="font-bold text-slate-700">{session.date}</p>
+            </div>
+            <div>
+              <p className="text-slate-400 font-semibold">Time</p>
+              <p className="font-bold text-slate-700">{session.startTime} – {session.endTime || `+${session.durationMinutes}min`}</p>
+            </div>
+            <div>
+              <p className="text-slate-400 font-semibold">Instructor</p>
+              <p className="font-bold text-[#0077b6]">{session.instructorName}</p>
+            </div>
+            {session.courseTitle && (
+              <div>
+                <p className="text-slate-400 font-semibold">Course</p>
+                <p className="font-bold text-slate-700">{session.courseTitle}</p>
+              </div>
+            )}
+          </div>
+
+          {/* Admin-only: Start Session button */}
+          {user.role === 'admin' && (
+            <button
+              id="start-session-btn"
+              onClick={handleStartSession}
+              className="w-full flex items-center justify-center gap-2 py-3.5 rounded-full bg-gradient-to-r from-red-500 to-rose-600 text-white font-extrabold text-sm shadow-lg shadow-red-200 hover:shadow-xl transition-all hover:scale-[1.02]"
+            >
+              <Radio className="w-5 h-5" />
+              Start Live Session
+            </button>
+          )}
+          {user.role !== 'admin' && (
+            <p className="text-xs text-slate-400">
+              The live session hasn't started yet. You'll be able to join once the instructor begins the class.
+            </p>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  if (pageState === 'prejoin') {
+    return (
+      <div className="space-y-4 animate-in fade-in duration-300">
+        {/* Back nav + session info header */}
+        <div className="flex items-center gap-3 border-b border-slate-200/80 pb-4">
+          <Link href="/live" className="text-slate-400 hover:text-slate-700 transition">
+            <ArrowLeft className="w-5 h-5" />
+          </Link>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="inline-flex items-center gap-1 text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-red-500 text-white">
+                <span className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
+                LIVE
+              </span>
+              <h1 className="text-base font-black text-slate-800 truncate">{session.title}</h1>
+            </div>
+            <p className="text-xs text-slate-500 truncate">
+              {session.courseTitle && <><span className="font-semibold text-[#0077b6]">{session.courseTitle}</span> · </>}
+              {session.instructorName}
+            </p>
+          </div>
+          {/* Instructor controls */}
+          {user.role === 'admin' && (
+            <button
+              id="end-session-btn"
+              onClick={handleEndSession}
+              className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-red-50 text-red-600 border border-red-200 font-bold text-xs hover:bg-red-100 transition"
+            >
+              <XCircle className="w-3.5 h-3.5" />
+              End Session
+            </button>
+          )}
+        </div>
+
+        {/* Pre-join screen before confirming entry */}
+        <PreJoinScreen
+          session={session}
+          user={{ name: user.name, role: user.role }}
+          onJoin={() => setPageState('live')}
+        />
+      </div>
+    );
+  }
+
+  // ----------------------------------------------------------------
+  // LIVE CLASSROOM VIEW
+  // ----------------------------------------------------------------
+  return (
+    <div className="flex flex-col gap-0 -mx-3.5 sm:-mx-6 md:-mx-8 -mt-6 md:-mt-8 animate-in fade-in duration-300">
+      {/* Session top bar */}
+      <div className="flex items-center gap-3 px-4 py-3 bg-slate-900 text-white shrink-0">
+        <Link href="/live" className="text-white/50 hover:text-white transition">
+          <ArrowLeft className="w-5 h-5" />
+        </Link>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="inline-flex items-center gap-1 text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-red-500 text-white">
+              <span className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
+              LIVE
+            </span>
+            <span className="font-bold text-sm text-white truncate">{session.title}</span>
+          </div>
+          <p className="text-white/50 text-[11px] truncate">
+            {session.instructorName}
+            {session.courseTitle ? ` · ${session.courseTitle}` : ''}
+            {participantCount > 0 ? ` · ${participantCount + 1} participants` : ''}
+          </p>
+        </div>
+
+        {/* Instructor: end session */}
+        {user.role === 'admin' && (
+          <button
+            id="live-end-session-btn"
+            onClick={handleEndSession}
+            className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-red-600 hover:bg-red-700 text-white font-bold text-xs transition"
+          >
+            <XCircle className="w-3.5 h-3.5" />
+            End Session
+          </button>
+        )}
+      </div>
+
+      {/* Jitsi Classroom fills remaining height */}
+      <div className="flex-1" style={{ minHeight: 'calc(100vh - 120px)' }}>
+        <JitsiClassroom
+          roomName={session.meetingRoomId}
+          displayName={user.name}
+          userEmail={user.email}
+          isInstructor={user.role === 'admin'}
+          sessionTitle={session.title}
+          onJoined={handleJoined}
+          onLeft={handleLeft}
+          onParticipantJoined={handleParticipantJoined}
+          onParticipantLeft={handleParticipantLeft}
+        />
+      </div>
+    </div>
+  );
+}

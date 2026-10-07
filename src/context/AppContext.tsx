@@ -5,6 +5,8 @@ import {
   Course,
   DownloadableMaterial,
   FAQItem,
+  LiveSession,
+  LiveSessionStatus,
   NotificationItem,
   Quiz,
   QuizSubmission,
@@ -17,6 +19,7 @@ import {
 import {
   initialCourses,
   initialFAQs,
+  initialLiveSessions,
   initialMaterials,
   initialNotifications,
   initialProfile,
@@ -31,7 +34,10 @@ import {
   supabaseLogout,
   fetchVideosFromSupabase,
   saveVideoToSupabase,
-  deleteVideoFromSupabase
+  deleteVideoFromSupabase,
+  fetchLiveSessionsFromSupabase,
+  saveLiveSessionToSupabase,
+  deleteLiveSessionFromSupabase
 } from '@/lib/supabase';
 import { deleteVideoBlob } from '@/lib/videoStorage';
 import { sendQuizSubmissionNotification } from '@/lib/notifications';
@@ -48,6 +54,7 @@ interface AppContextType {
   schedules: ScheduleItem[];
   notifications: NotificationItem[];
   faqs: FAQItem[];
+  liveSessions: LiveSession[];
   searchQuery: string;
   isSearchOpen: boolean;
   isNotificationDrawerOpen: boolean;
@@ -79,13 +86,17 @@ interface AppContextType {
   resetAllData: () => void;
   adminTab: AdminTabType;
   setAdminTab: (tab: AdminTabType) => void;
+  // Live Sessions
+  addLiveSession: (session: Omit<LiveSession, 'id' | 'createdAt' | 'attendeesCount'>) => void;
+  updateLiveSession: (id: string, updates: Partial<LiveSession>) => void;
+  deleteLiveSession: (id: string) => void;
 }
 
-export type AdminTabType = 'users' | 'courses' | 'videos' | 'materials' | 'quizzes' | 'announcements';
+export type AdminTabType = 'users' | 'courses' | 'videos' | 'materials' | 'quizzes' | 'announcements' | 'live';
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
-const LOCAL_STORAGE_KEY = 'bookkeep_it_state_v7';
+const LOCAL_STORAGE_KEY = 'bookkeep_it_state_v8';
 
 export interface UserProgressRecord {
   completedLessonIds: string[];
@@ -173,6 +184,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [notifications, setNotifications] = useState<NotificationItem[]>(initialNotifications);
   const [faqs] = useState<FAQItem[]>(initialFAQs);
   const [userProgress, setUserProgress] = useState<Record<string, UserProgressRecord>>({});
+  const [liveSessions, setLiveSessions] = useState<LiveSession[]>(initialLiveSessions);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -235,6 +247,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
         if (parsed.schedules) setSchedules(parsed.schedules);
         if (parsed.notifications) setNotifications(parsed.notifications);
+        if (parsed.liveSessions) {
+          // Merge saved sessions with initial ones to keep demo data
+          const savedIds = new Set(parsed.liveSessions.map((s: LiveSession) => s.id));
+          const merged = [
+            ...parsed.liveSessions,
+            ...initialLiveSessions.filter((s) => !savedIds.has(s.id))
+          ];
+          setLiveSessions(merged);
+        }
       }
     } catch (e) {
       console.error('Failed to parse saved state:', e);
@@ -263,6 +284,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     };
     syncCloudVideos();
+
+    const syncCloudLiveSessions = async () => {
+      try {
+        const cloudSessions = await fetchLiveSessionsFromSupabase();
+        if (isMounted && cloudSessions && cloudSessions.length > 0) {
+          setLiveSessions((prevSessions) => {
+            const map = new Map<string, LiveSession>();
+            initialLiveSessions.forEach((s) => map.set(s.id, s));
+            prevSessions.forEach((s) => map.set(s.id, s));
+            cloudSessions.forEach((s) => map.set(s.id, s));
+            return Array.from(map.values());
+          });
+        }
+      } catch (e) {
+        console.warn('Could not sync cloud live sessions:', e);
+      }
+    };
+    syncCloudLiveSessions();
+
     return () => {
       isMounted = false;
     };
@@ -283,13 +323,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         videos,
         schedules,
         notifications,
-        userProgress
+        userProgress,
+        liveSessions
       };
       localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(stateToSave));
     } catch (e) {
       console.error('Failed to save state:', e);
     }
-  }, [user, accounts, isAuthenticated, courses, quizzes, submissions, materials, videos, schedules, notifications, userProgress, isLoaded]);
+  }, [user, accounts, isAuthenticated, courses, quizzes, submissions, materials, videos, schedules, notifications, userProgress, liveSessions, isLoaded]);
 
   // Login handler supporting fixed admin and student accounts with Supabase sync
   // Login handler supporting admin and registered student accounts
@@ -611,6 +652,69 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setVideos(initialVideos);
     setSchedules(initialSchedules);
     setNotifications(initialNotifications);
+    setLiveSessions(initialLiveSessions);
+  };
+
+  // Live Session CRUD
+  const addLiveSession = (session: Omit<LiveSession, 'id' | 'createdAt' | 'attendeesCount'>) => {
+    const newSession: LiveSession = {
+      ...session,
+      id: `ls-${Date.now()}`,
+      attendeesCount: 0,
+      createdAt: new Date().toISOString()
+    };
+    setLiveSessions((prev) => [newSession, ...prev]);
+    // Sync to Supabase Cloud in background
+    saveLiveSessionToSupabase(newSession);
+
+    // Broadcast notification to students
+    const notif: NotificationItem = {
+      id: `notif-ls-${Date.now()}`,
+      title: `Live Class Scheduled: ${session.title}`,
+      message: `${session.instructorName} has scheduled a live class on ${session.date} at ${session.startTime}.${session.courseTitle ? ` Course: ${session.courseTitle}.` : ''}`,
+      category: 'announcement',
+      createdAt: new Date().toISOString(),
+      isRead: false,
+      sender: session.instructorName
+    };
+    setNotifications((prev) => [notif, ...prev]);
+  };
+
+  const updateLiveSession = (id: string, updates: Partial<LiveSession>) => {
+    let updatedSession: LiveSession | null = null;
+    setLiveSessions((prev) =>
+      prev.map((s) => {
+        if (s.id === id) {
+          updatedSession = { ...s, ...updates, updatedAt: new Date().toISOString() };
+          return updatedSession;
+        }
+        return s;
+      })
+    );
+    if (updatedSession) {
+      saveLiveSessionToSupabase(updatedSession);
+    }
+    // If a session goes live, send a notification
+    if (updates.status === 'live') {
+      const session = liveSessions.find((s) => s.id === id);
+      if (session) {
+        const notif: NotificationItem = {
+          id: `notif-live-${Date.now()}`,
+          title: `🔴 LIVE NOW: ${session.title}`,
+          message: `${session.instructorName} has started the live class. Join now from the Live Classes page!`,
+          category: 'announcement',
+          createdAt: new Date().toISOString(),
+          isRead: false,
+          sender: session.instructorName
+        };
+        setNotifications((prev) => [notif, ...prev]);
+      }
+    }
+  };
+
+  const deleteLiveSession = (id: string) => {
+    setLiveSessions((prev) => prev.filter((s) => s.id !== id));
+    deleteLiveSessionFromSupabase(id);
   };
 
   return (
@@ -627,6 +731,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         schedules,
         notifications,
         faqs,
+        liveSessions,
         searchQuery,
         isSearchOpen,
         isNotificationDrawerOpen,
@@ -657,7 +762,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         broadcastAnnouncement,
         resetAllData,
         adminTab,
-        setAdminTab
+        setAdminTab,
+        addLiveSession,
+        updateLiveSession,
+        deleteLiveSession
       }}
     >
       {children}
