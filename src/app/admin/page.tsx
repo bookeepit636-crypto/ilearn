@@ -25,10 +25,13 @@ import {
   User,
   Users,
   Video,
-  X
+  X,
+  ChevronDown,
+  ChevronUp,
+  XCircle
 } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
-import { Course, DownloadableMaterial, Lesson, LiveSession, LiveSessionStatus, Quiz, QuizQuestion, Topic, UserProfile, VideoLesson } from '@/types';
+import { Course, DownloadableMaterial, Lesson, LiveSession, LiveSessionStatus, Quiz, QuizQuestion, Topic, UserAccount, UserProfile, VideoLesson } from '@/types';
 import { uploadToCloudinary } from '@/lib/cloudinary';
 import { saveVideoBlob, deleteVideoBlob, generateVideoThumbnail } from '@/lib/videoStorage';
 import Link from 'next/link';
@@ -1589,6 +1592,7 @@ export default function AdminPage() {
         <LiveClassesAdminPanel
           liveSessions={liveSessions}
           courses={courses}
+          accounts={accounts}
           user={user}
           addLiveSession={addLiveSession}
           updateLiveSession={updateLiveSession}
@@ -1600,12 +1604,13 @@ export default function AdminPage() {
 }
 
 // ============================================================
-// LIVE CLASSES ADMIN PANEL (separate component for clarity)
+// LIVE CLASSES ADMIN PANEL (Real Database Records & Students)
 // ============================================================
 
 function LiveClassesAdminPanel({
   liveSessions,
   courses,
+  accounts,
   user,
   addLiveSession,
   updateLiveSession,
@@ -1613,6 +1618,7 @@ function LiveClassesAdminPanel({
 }: {
   liveSessions: LiveSession[];
   courses: Course[];
+  accounts: UserAccount[];
   user: UserProfile;
   addLiveSession: (s: Omit<LiveSession, 'id' | 'createdAt' | 'attendeesCount'> & { id?: string }) => LiveSession;
   updateLiveSession: (id: string, u: Partial<LiveSession>) => void;
@@ -1622,10 +1628,14 @@ function LiveClassesAdminPanel({
   const [lsTitle, setLsTitle] = useState('');
   const [lsDesc, setLsDesc] = useState('');
   const [lsCourseId, setLsCourseId] = useState('');
-  const [lsDate, setLsDate] = useState(new Date().toISOString().split('T')[0]);
-  const [lsStart, setLsStart] = useState('14:00');
-  const [lsEnd, setLsEnd] = useState('15:00');
+  const [lsDate, setLsDate] = useState('');
+  const [lsStart, setLsStart] = useState('');
+  const [lsEnd, setLsEnd] = useState('');
   const [lsDuration, setLsDuration] = useState(60);
+  const [expandedRosterId, setExpandedRosterId] = useState<string | null>(null);
+
+  // Real registered students from the system (zero mock data)
+  const realStudents = accounts.filter((a) => a.role === 'student');
 
   const statusPill: Record<LiveSessionStatus, string> = {
     live: 'bg-red-500 text-white',
@@ -1639,6 +1649,18 @@ function LiveClassesAdminPanel({
       alert('Please enter a session title');
       return;
     }
+
+    const now = new Date();
+    const actualDate = now.toISOString().split('T')[0];
+    const actualStartTime = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+    const endMinutes = new Date(now.getTime() + (lsDuration || 60) * 60000);
+    const actualEndTime = endMinutes.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+
+    // For instant meeting: auto-generate date and actual start time from current timestamp
+    const dateToUse = startNow ? actualDate : (lsDate || actualDate);
+    const startTimeToUse = startNow ? actualStartTime : (lsStart || actualStartTime);
+    const endTimeToUse = startNow ? actualEndTime : (lsEnd || actualEndTime);
+
     const selectedCourse = courses.find((c) => c.id === lsCourseId);
     const generatedId = `ls-${Date.now()}`;
     const roomId = `bookkeep-it-${lsTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 40)}-${Date.now()}`;
@@ -1646,24 +1668,29 @@ function LiveClassesAdminPanel({
     const created = addLiveSession({
       id: generatedId,
       title: lsTitle.trim(),
-      description: lsDesc || 'Live bookkeeping class session.',
+      description: lsDesc.trim() || '',
       courseId: lsCourseId || undefined,
       courseTitle: selectedCourse?.title,
       instructorName: user.name,
       instructorId: user.id,
-      date: lsDate,
-      startTime: lsStart,
-      endTime: lsEnd,
+      date: dateToUse,
+      startTime: startTimeToUse,
+      endTime: endTimeToUse,
       durationMinutes: lsDuration,
       meetingRoomId: roomId,
-      status: startNow ? 'live' : 'scheduled'
+      status: startNow ? 'live' : 'scheduled',
+      participants: []
     });
 
     setLsTitle('');
     setLsDesc('');
+    setLsCourseId('');
+    setLsDate('');
+    setLsStart('');
+    setLsEnd('');
 
     if (startNow) {
-      // Direct Google Meet / Zoom style navigation into the video meeting
+      // Direct Google Meet / Zoom style navigation straight into the video meeting
       router.push(`/live/${created.id}`);
     } else {
       alert('Live class scheduled successfully! It is now visible on student dashboards and the Live Classes page.');
@@ -1680,7 +1707,9 @@ function LiveClassesAdminPanel({
         </h3>
         <form onSubmit={(e) => { e.preventDefault(); handleCreate(false); }} className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
           <div className="md:col-span-2">
-            <label className="block text-slate-700 font-semibold mb-1">Session Title</label>
+            <label className="block text-slate-700 font-semibold mb-1">
+              Session Title <span className="text-red-500">*</span>
+            </label>
             <input
               type="text"
               required
@@ -1690,29 +1719,36 @@ function LiveClassesAdminPanel({
               className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-800 focus:outline-none focus:border-indigo-600"
             />
           </div>
+
           <div className="md:col-span-2">
-            <label className="block text-slate-700 font-semibold mb-1">Description</label>
+            <label className="block text-slate-700 font-semibold mb-1">
+              Description <span className="text-slate-400 font-normal">(optional)</span>
+            </label>
             <textarea
               rows={2}
               value={lsDesc}
               onChange={(e) => setLsDesc(e.target.value)}
-              placeholder="Brief agenda or topic for this live session..."
+              placeholder="Brief agenda or topic for this live session (optional)..."
               className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-800 focus:outline-none focus:border-indigo-600 resize-none"
             />
           </div>
+
           <div>
-            <label className="block text-slate-700 font-semibold mb-1">Link to Course (optional)</label>
+            <label className="block text-slate-700 font-semibold mb-1">
+              Link to Course <span className="text-slate-400 font-normal">(optional)</span>
+            </label>
             <select
               value={lsCourseId}
               onChange={(e) => setLsCourseId(e.target.value)}
               className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-800 focus:outline-none focus:border-indigo-600"
             >
-              <option value="">-- No specific course --</option>
+              <option value="">-- No specific course (Open to all students) --</option>
               {courses.map((c) => (
                 <option key={c.id} value={c.id}>{c.title}</option>
               ))}
             </select>
           </div>
+
           <div>
             <label className="block text-slate-700 font-semibold mb-1">Duration (minutes)</label>
             <input
@@ -1724,29 +1760,36 @@ function LiveClassesAdminPanel({
               className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-800 focus:outline-none focus:border-indigo-600"
             />
           </div>
+
+          {/* Scheduled Date & Time - Optional for instant live meetings */}
           <div>
-            <label className="block text-slate-700 font-semibold mb-1">Date</label>
+            <label className="block text-slate-700 font-semibold mb-1">
+              Scheduled Date <span className="text-slate-400 font-normal">(auto-filled if starting now)</span>
+            </label>
             <input
               type="date"
-              required
               value={lsDate}
               onChange={(e) => setLsDate(e.target.value)}
               className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-800 focus:outline-none focus:border-indigo-600"
             />
           </div>
+
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="block text-slate-700 font-semibold mb-1">Start Time</label>
+              <label className="block text-slate-700 font-semibold mb-1">
+                Start Time <span className="text-slate-400 font-normal">(auto-recorded if now)</span>
+              </label>
               <input
                 type="time"
-                required
                 value={lsStart}
                 onChange={(e) => setLsStart(e.target.value)}
                 className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-800 focus:outline-none focus:border-indigo-600"
               />
             </div>
             <div>
-              <label className="block text-slate-700 font-semibold mb-1">End Time</label>
+              <label className="block text-slate-700 font-semibold mb-1">
+                End Time <span className="text-slate-400 font-normal">(optional)</span>
+              </label>
               <input
                 type="time"
                 value={lsEnd}
@@ -1755,9 +1798,11 @@ function LiveClassesAdminPanel({
               />
             </div>
           </div>
+
           <div className="md:col-span-2 flex flex-col sm:flex-row justify-end gap-3 pt-2">
             <button
               type="button"
+              id="admin-start-instant-live-btn"
               onClick={() => handleCreate(true)}
               className="px-6 py-2.5 rounded-full bg-gradient-to-r from-red-500 to-rose-600 hover:from-red-600 hover:to-rose-700 text-white font-extrabold text-xs flex items-center justify-center gap-2 shadow-md shadow-red-500/25 transition active:scale-95"
             >
@@ -1766,6 +1811,7 @@ function LiveClassesAdminPanel({
             </button>
             <button
               type="button"
+              id="admin-schedule-later-btn"
               onClick={() => handleCreate(false)}
               className="px-6 py-2.5 rounded-full bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-md transition active:scale-95"
             >
@@ -1778,75 +1824,223 @@ function LiveClassesAdminPanel({
 
       {/* Sessions List */}
       <div className="card-theme p-6 rounded-3xl bg-white border border-slate-100 space-y-4">
-        <h3 className="text-base font-bold text-slate-800 border-b border-slate-100 pb-2">All Live Sessions ({liveSessions.length})</h3>
-        <div className="space-y-3">
+        <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+          <h3 className="text-base font-bold text-slate-800">
+            All Live Sessions ({liveSessions.length})
+          </h3>
+          <span className="text-xs text-slate-500 font-medium">
+            Registered Students: <strong className="text-indigo-600">{realStudents.length}</strong>
+          </span>
+        </div>
+
+        <div className="space-y-4">
           {liveSessions.length === 0 && (
-            <p className="text-xs text-slate-400 text-center py-8">No live sessions yet. Schedule or start your first class above.</p>
+            <p className="text-xs text-slate-400 text-center py-8">
+              No live sessions yet. Schedule or start your first live class above.
+            </p>
           )}
-          {liveSessions.map((session) => (
-            <div key={session.id} className="flex flex-col sm:flex-row sm:items-center gap-3 p-4 rounded-2xl bg-slate-50 border border-slate-200">
-              <div className="flex-1 min-w-0 space-y-0.5">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className={`text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full ${statusPill[session.status]}`}>
-                    {session.status === 'live' ? '🔴 Live Now' : session.status}
-                  </span>
-                  {session.courseTitle && (
-                    <span className="text-[10px] text-[#0077b6] font-bold">{session.courseTitle}</span>
-                  )}
+
+          {liveSessions.map((session) => {
+            const isRosterExpanded = expandedRosterId === session.id;
+            const participantsCount = session.participants?.length || session.attendeesCount || 0;
+
+            return (
+              <div
+                key={session.id}
+                className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-3 transition-all"
+              >
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex-1 min-w-0 space-y-0.5">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className={`text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-full ${statusPill[session.status]}`}>
+                        {session.status === 'live' ? '🔴 Live Now' : session.status}
+                      </span>
+                      {session.courseTitle && (
+                        <span className="text-[10px] text-[#0077b6] font-bold">
+                          {session.courseTitle}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-sm font-bold text-slate-800 truncate">{session.title}</p>
+                    <p className="text-xs text-slate-500">
+                      {session.date} · {session.startTime}
+                      {session.endTime ? ` – ${session.endTime}` : ''}
+                      {session.status === 'completed' && session.endTime && (
+                        <span className="ml-1 text-emerald-600 font-semibold">(Ended at {session.endTime})</span>
+                      )}
+                    </p>
+                    {session.description && (
+                      <p className="text-xs text-slate-400 line-clamp-1">{session.description}</p>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0 flex-wrap">
+                    {/* SCHEDULED: Go Live & Enter OR Cancel */}
+                    {session.status === 'scheduled' && (
+                      <>
+                        <button
+                          id={`go-live-btn-${session.id}`}
+                          onClick={() => {
+                            const actualStart = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+                            updateLiveSession(session.id, { status: 'live', startTime: actualStart });
+                            router.push(`/live/${session.id}`);
+                          }}
+                          className="px-3 py-1.5 rounded-full bg-red-500 hover:bg-red-600 text-white font-bold text-[11px] flex items-center gap-1 shadow-sm transition active:scale-95"
+                        >
+                          <Radio className="w-3 h-3" /> Go Live & Enter
+                        </button>
+                        <button
+                          id={`cancel-schedule-btn-${session.id}`}
+                          onClick={() => updateLiveSession(session.id, { status: 'cancelled' })}
+                          className="px-3 py-1.5 rounded-full bg-amber-100 text-amber-700 font-bold text-[11px] flex items-center gap-1 transition hover:bg-amber-200 active:scale-95"
+                        >
+                          <XCircle className="w-3 h-3" /> Cancel Schedule
+                        </button>
+                      </>
+                    )}
+
+                    {/* LIVE NOW: Enter Room OR End Session */}
+                    {session.status === 'live' && (
+                      <>
+                        <button
+                          id={`enter-room-btn-${session.id}`}
+                          onClick={() => router.push(`/live/${session.id}`)}
+                          className="px-3 py-1.5 rounded-full bg-green-600 hover:bg-green-700 text-white font-bold text-[11px] flex items-center gap-1 shadow-sm transition active:scale-95"
+                        >
+                          <Radio className="w-3 h-3" /> Enter Room
+                        </button>
+                        <button
+                          id={`end-session-btn-${session.id}`}
+                          onClick={() => {
+                            const actualEnd = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+                            updateLiveSession(session.id, { status: 'completed', endTime: actualEnd });
+                          }}
+                          className="px-3 py-1.5 rounded-full bg-slate-700 hover:bg-slate-800 text-white font-bold text-[11px] flex items-center gap-1 transition active:scale-95"
+                        >
+                          <CheckCircle2 className="w-3 h-3" /> End Session
+                        </button>
+                      </>
+                    )}
+
+                    {/* COMPLETED: Permanent badge, NO active controls */}
+                    {session.status === 'completed' && (
+                      <span className="text-[11px] font-bold text-emerald-700 bg-emerald-100/70 px-3 py-1 rounded-full border border-emerald-200 flex items-center gap-1">
+                        <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Session Completed
+                      </span>
+                    )}
+
+                    {/* CANCELLED: Permanent badge, NO active controls */}
+                    {session.status === 'cancelled' && (
+                      <span className="text-[11px] font-bold text-slate-500 bg-slate-200/70 px-3 py-1 rounded-full border border-slate-300 flex items-center gap-1">
+                        <XCircle className="w-3 h-3 text-slate-400" /> Cancelled
+                      </span>
+                    )}
+
+                    {/* Delete button */}
+                    <button
+                      id={`delete-session-btn-${session.id}`}
+                      onClick={() => {
+                        if (confirm(`Delete "${session.title}"?`)) deleteLiveSession(session.id);
+                      }}
+                      className="p-1.5 rounded-full text-slate-400 hover:text-red-500 hover:bg-red-50 transition"
+                      title="Delete Session"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
-                <p className="text-sm font-bold text-slate-800 truncate">{session.title}</p>
-                <p className="text-xs text-slate-500">{session.date} · {session.startTime}{session.endTime ? ` – ${session.endTime}` : ''}</p>
-              </div>
-              <div className="flex items-center gap-2 shrink-0 flex-wrap">
-                {/* Status control buttons */}
-                {session.status === 'scheduled' && (
+
+                {/* Registered Students & Attendees Roster Drawer Toggle */}
+                <div className="pt-1 border-t border-slate-200/60 flex items-center justify-between text-xs">
                   <button
-                    onClick={() => {
-                      updateLiveSession(session.id, { status: 'live' });
-                      router.push(`/live/${session.id}`);
-                    }}
-                    className="px-3 py-1.5 rounded-full bg-red-500 hover:bg-red-600 text-white font-bold text-[11px] flex items-center gap-1 shadow-sm transition"
+                    type="button"
+                    onClick={() => setExpandedRosterId(isRosterExpanded ? null : session.id)}
+                    className="inline-flex items-center gap-1.5 text-indigo-600 hover:text-indigo-800 font-semibold py-1 transition"
                   >
-                    <Radio className="w-3 h-3" /> Go Live & Enter
+                    <Users className="w-3.5 h-3.5" />
+                    <span>
+                      Registered Students ({realStudents.length}) · Attended ({participantsCount})
+                    </span>
+                    {isRosterExpanded ? (
+                      <ChevronUp className="w-3.5 h-3.5" />
+                    ) : (
+                      <ChevronDown className="w-3.5 h-3.5" />
+                    )}
                   </button>
+
+                  <span className="text-[11px] text-slate-400">
+                    Room: <code className="text-slate-600 bg-slate-100 px-1 py-0.5 rounded">{session.meetingRoomId}</code>
+                  </span>
+                </div>
+
+                {/* Expanded Students Roster */}
+                {isRosterExpanded && (
+                  <div className="bg-white rounded-xl p-3 border border-slate-200 space-y-2 animate-in fade-in duration-200">
+                    <div className="flex items-center justify-between border-b border-slate-100 pb-1.5">
+                      <p className="text-[11px] font-extrabold uppercase tracking-wider text-slate-600">
+                        Class Roster & Live Attendance
+                      </p>
+                      <span className="text-[11px] text-slate-500 font-medium">
+                        {participantsCount} of {realStudents.length} Joined
+                      </span>
+                    </div>
+
+                    {realStudents.length === 0 ? (
+                      <p className="text-xs text-slate-400 py-2 text-center">
+                        No registered students found in the database. When students register on BookKeep-It, they will automatically appear here.
+                      </p>
+                    ) : (
+                      <div className="divide-y divide-slate-100 max-h-56 overflow-y-auto">
+                        {realStudents.map((student) => {
+                          const participantRecord = session.participants?.find(
+                            (p) => p.userId === student.id || p.userEmail?.toLowerCase() === student.email.toLowerCase() || p.userName === student.name
+                          );
+                          const hasJoined = Boolean(participantRecord);
+
+                          return (
+                            <div key={student.id} className="py-2 flex items-center justify-between gap-3 text-xs">
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                <div className="w-7 h-7 rounded-full bg-indigo-50 border border-indigo-200 flex items-center justify-center font-bold text-indigo-700 text-[11px] shrink-0">
+                                  {student.name.charAt(0).toUpperCase()}
+                                </div>
+                                <div className="min-w-0">
+                                  <p className="font-bold text-slate-800 truncate">{student.name}</p>
+                                  <p className="text-[11px] text-slate-400 truncate">
+                                    {student.studentId || 'Student'} · {student.email}
+                                  </p>
+                                </div>
+                              </div>
+
+                              <div className="shrink-0">
+                                {hasJoined ? (
+                                  <span className="inline-flex items-center gap-1 text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                    Present
+                                    {participantRecord?.joinedAt && (
+                                      <span className="text-[9px] text-emerald-600 font-normal ml-0.5">
+                                        ({new Date(participantRecord.joinedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})
+                                      </span>
+                                    )}
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-500">
+                                    Enrolled · Not in room
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
                 )}
-                {session.status === 'live' && (
-                  <>
-                    <button
-                      onClick={() => router.push(`/live/${session.id}`)}
-                      className="px-3 py-1.5 rounded-full bg-green-600 hover:bg-green-700 text-white font-bold text-[11px] flex items-center gap-1 shadow-sm transition"
-                    >
-                      <Radio className="w-3 h-3" /> Enter Room
-                    </button>
-                    <button
-                      onClick={() => updateLiveSession(session.id, { status: 'completed' })}
-                      className="px-3 py-1.5 rounded-full bg-slate-700 hover:bg-slate-800 text-white font-bold text-[11px] flex items-center gap-1 transition"
-                    >
-                      <CheckCircle2 className="w-3 h-3" /> End Session
-                    </button>
-                  </>
-                )}
-                {session.status === 'scheduled' && (
-                  <button
-                    onClick={() => updateLiveSession(session.id, { status: 'cancelled' })}
-                    className="px-3 py-1.5 rounded-full bg-amber-100 text-amber-700 font-bold text-[11px] flex items-center gap-1 transition hover:bg-amber-200"
-                  >
-                    Cancel
-                  </button>
-                )}
-                <button
-                  onClick={() => {
-                    if (confirm(`Delete "${session.title}"?`)) deleteLiveSession(session.id);
-                  }}
-                  className="p-1.5 rounded-full text-slate-400 hover:text-red-500 hover:bg-red-50 transition"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </div>
   );
 }
+

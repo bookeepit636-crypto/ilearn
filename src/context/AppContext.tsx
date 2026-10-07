@@ -37,7 +37,9 @@ import {
   deleteVideoFromSupabase,
   fetchLiveSessionsFromSupabase,
   saveLiveSessionToSupabase,
-  deleteLiveSessionFromSupabase
+  deleteLiveSessionFromSupabase,
+  fetchAccountsFromApi,
+  saveAccountToApi
 } from '@/lib/supabase';
 import { deleteVideoBlob } from '@/lib/videoStorage';
 import { sendQuizSubmissionNotification } from '@/lib/notifications';
@@ -247,14 +249,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
         if (parsed.schedules) setSchedules(parsed.schedules);
         if (parsed.notifications) setNotifications(parsed.notifications);
-        if (parsed.liveSessions) {
-          // Merge saved sessions with initial ones to keep demo data
-          const savedIds = new Set(parsed.liveSessions.map((s: LiveSession) => s.id));
-          const merged = [
-            ...parsed.liveSessions,
-            ...initialLiveSessions.filter((s) => !savedIds.has(s.id))
-          ];
-          setLiveSessions(merged);
+        if (parsed.liveSessions && Array.isArray(parsed.liveSessions)) {
+          setLiveSessions(parsed.liveSessions);
         }
       }
     } catch (e) {
@@ -264,7 +260,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, []);
 
-  // Sync shared videos from Supabase Cloud on mount so all devices/Vercel stay synchronized
+  // Sync shared videos, live sessions, and registered accounts
   useEffect(() => {
     let isMounted = true;
     const syncCloudVideos = async () => {
@@ -285,15 +281,60 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
     syncCloudVideos();
 
+    // Sync registered accounts dynamically across sessions
+    const syncRegisteredAccounts = async () => {
+      try {
+        const remoteAccounts = await fetchAccountsFromApi();
+        if (isMounted && remoteAccounts && Array.isArray(remoteAccounts) && remoteAccounts.length > 0) {
+          setAccounts((prev) => {
+            const map = new Map<string, UserAccount>();
+            prev.forEach((a) => map.set(a.id, a));
+            remoteAccounts.forEach((ra: UserAccount) => {
+              if (!map.has(ra.id)) {
+                map.set(ra.id, ra);
+              }
+            });
+            return Array.from(map.values());
+          });
+        }
+      } catch {
+        // ignore
+      }
+    };
+    syncRegisteredAccounts();
+
+    const isTerminalStatus = (status?: LiveSessionStatus) => status === 'completed' || status === 'cancelled';
+
     const syncCloudLiveSessions = async () => {
       try {
         const cloudSessions = await fetchLiveSessionsFromSupabase();
-        if (isMounted && cloudSessions && cloudSessions.length > 0) {
+        if (isMounted && cloudSessions && Array.isArray(cloudSessions)) {
           setLiveSessions((prevSessions) => {
             const map = new Map<string, LiveSession>();
-            initialLiveSessions.forEach((s) => map.set(s.id, s));
             prevSessions.forEach((s) => map.set(s.id, s));
-            cloudSessions.forEach((s) => map.set(s.id, s));
+            cloudSessions.forEach((incoming) => {
+              const existing = map.get(incoming.id);
+              if (existing) {
+                // If existing session is in terminal state (completed or cancelled),
+                // NEVER allow a stale incoming state (scheduled or live) to revert it!
+                if (isTerminalStatus(existing.status) && !isTerminalStatus(incoming.status)) {
+                  map.set(incoming.id, {
+                    ...incoming,
+                    status: existing.status,
+                    endTime: existing.endTime || incoming.endTime,
+                    participants: incoming.participants || existing.participants || []
+                  });
+                } else {
+                  map.set(incoming.id, {
+                    ...existing,
+                    ...incoming,
+                    participants: incoming.participants || existing.participants || []
+                  });
+                }
+              } else {
+                map.set(incoming.id, incoming);
+              }
+            });
             return Array.from(map.values());
           });
         }
@@ -484,6 +525,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Reset all courses to 0% progress and clear submissions for new student
     setCourses((prev) => applyProgressToCourses(prev, []));
     setSubmissions([]);
+
+    // Sync with server accounts store so admin immediately sees real registered student
+    saveAccountToApi(newAcc);
 
     setAccounts((prev) => [...prev, newAcc]);
     setUser(newAcc);
@@ -710,17 +754,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setVideos(initialVideos);
     setSchedules(initialSchedules);
     setNotifications(initialNotifications);
-    setLiveSessions(initialLiveSessions);
+    setLiveSessions([]);
   };
 
   // Live Session CRUD
   const addLiveSession = (session: Omit<LiveSession, 'id' | 'createdAt' | 'attendeesCount'> & { id?: string }): LiveSession => {
+    const now = new Date();
+    const nowTime = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+    const nowDate = now.toISOString().split('T')[0];
+
     const newSession: LiveSession = {
       ...session,
       id: session.id || `ls-${Date.now()}`,
-      attendeesCount: 0,
+      date: session.date || nowDate,
+      startTime: session.status === 'live' && !session.startTime ? nowTime : (session.startTime || nowTime),
+      attendeesCount: session.participants ? session.participants.length : 0,
+      participants: session.participants || [],
       createdAt: new Date().toISOString()
     };
+
     setLiveSessions((prev) => [newSession, ...prev]);
     // Sync to Supabase Cloud and /api/live in background
     saveLiveSessionToSupabase(newSession);
@@ -736,8 +788,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Broadcast notification to students
     const notif: NotificationItem = {
       id: `notif-ls-${Date.now()}`,
-      title: `Live Class Scheduled: ${session.title}`,
-      message: `${session.instructorName} has scheduled a live class on ${session.date} at ${session.startTime}.${session.courseTitle ? ` Course: ${session.courseTitle}.` : ''}`,
+      title: session.status === 'live' ? `🔴 LIVE NOW: ${session.title}` : `Live Class Scheduled: ${session.title}`,
+      message: `${session.instructorName} has ${session.status === 'live' ? 'started a live class right now' : `scheduled a live class on ${newSession.date} at ${newSession.startTime}`}.${session.courseTitle ? ` Course: ${session.courseTitle}.` : ''}`,
       category: 'announcement',
       createdAt: new Date().toISOString(),
       isRead: false,
@@ -748,16 +800,49 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const updateLiveSession = (id: string, updates: Partial<LiveSession>) => {
+    const isTerminalStatus = (status?: LiveSessionStatus) => status === 'completed' || status === 'cancelled';
+    const nowTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+
     let updatedSession: LiveSession | null = null;
     setLiveSessions((prev) =>
       prev.map((s) => {
         if (s.id === id) {
-          updatedSession = { ...s, ...updates, updatedAt: new Date().toISOString() };
+          // Terminal State Invariant: Completed or Cancelled status can NEVER revert to live or scheduled
+          if (isTerminalStatus(s.status) && (updates.status === 'live' || updates.status === 'scheduled')) {
+            console.warn(`Prevented reverting terminal session ${id} from ${s.status} to ${updates.status}`);
+            return s;
+          }
+
+          // Auto-record actual start time when starting live session
+          let finalStartTime = updates.startTime || s.startTime;
+          if (updates.status === 'live' && !updates.startTime && s.status !== 'live') {
+            finalStartTime = nowTime;
+          }
+
+          // Auto-record actual end time when ending live session
+          let finalEndTime = updates.endTime || s.endTime;
+          if (updates.status === 'completed' && !updates.endTime) {
+            finalEndTime = nowTime;
+          }
+
+          const participantsList = updates.participants || s.participants || [];
+          const attendeesCount = updates.attendeesCount !== undefined ? updates.attendeesCount : participantsList.length;
+
+          updatedSession = {
+            ...s,
+            ...updates,
+            startTime: finalStartTime,
+            endTime: finalEndTime,
+            participants: participantsList,
+            attendeesCount,
+            updatedAt: new Date().toISOString()
+          };
           return updatedSession;
         }
         return s;
       })
     );
+
     if (updatedSession) {
       saveLiveSessionToSupabase(updatedSession);
     }
@@ -770,9 +855,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     } catch {}
 
-    // If a session goes live, send a notification
+    // If a session goes live, send a high-priority notification
     if (updates.status === 'live') {
-      const session = liveSessions.find((s) => s.id === id);
+      const session = liveSessions.find((s) => s.id === id) || updatedSession;
       if (session) {
         const notif: NotificationItem = {
           id: `notif-live-${Date.now()}`,

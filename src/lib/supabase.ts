@@ -300,9 +300,38 @@ export async function recordAttendanceToSupabase(attendance: {
   userId?: string;
   userName: string;
   userEmail?: string;
+  studentId?: string;
+  program?: string;
   durationMinutes?: number;
 }): Promise<boolean> {
-  if (!isSupabaseConfigured()) return false;
+  // 1. Send join event to /api/live so admin immediately sees real student participant
+  try {
+    fetch('/api/live', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'join',
+        sessionId: attendance.sessionId,
+        participant: {
+          id: attendance.id,
+          sessionId: attendance.sessionId,
+          userId: attendance.userId || '',
+          userName: attendance.userName,
+          userEmail: attendance.userEmail,
+          studentId: attendance.studentId,
+          program: attendance.program,
+          joinedAt: new Date().toISOString(),
+          attendanceStatus: 'present',
+          durationMinutes: attendance.durationMinutes || 0
+        }
+      })
+    }).catch(() => {});
+  } catch {
+    // ignore
+  }
+
+  // 2. Also record to Supabase if configured
+  if (!isSupabaseConfigured()) return true;
   try {
     const { error } = await supabase.from('live_attendance').upsert({
       id: attendance.id,
@@ -322,5 +351,34 @@ export async function recordAttendanceToSupabase(attendance: {
     return false;
   }
 }
+
+// Sync registered accounts with /api/accounts
+export async function fetchAccountsFromApi() {
+  try {
+    const res = await fetch('/api/accounts', { cache: 'no-store' });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.success && Array.isArray(data.accounts)) {
+        return data.accounts;
+      }
+    }
+  } catch {
+    // ignore
+  }
+  return [];
+}
+
+export async function saveAccountToApi(account: any) {
+  try {
+    await fetch('/api/accounts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ account })
+    });
+  } catch {
+    // ignore
+  }
+}
+
 
 

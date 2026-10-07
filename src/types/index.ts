@@ -156,6 +156,7 @@ export interface LiveSession {
   status: LiveSessionStatus;
   recordingUrl?: string;
   attendeesCount?: number;
+  participants?: LiveSessionParticipant[];
   createdAt: string;
   updatedAt?: string;
 }
@@ -165,8 +166,12 @@ export interface LiveSessionParticipant {
   sessionId: string;
   userId: string;
   userName: string;
+  userEmail?: string;
+  studentId?: string;
+  program?: string;
   joinedAt: string;  // ISO timestamp
   leftAt?: string;   // ISO timestamp
   attendanceStatus: 'present' | 'late' | 'absent';
   durationMinutes?: number;
 }
+

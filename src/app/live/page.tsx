@@ -96,10 +96,10 @@ function SessionCard({ session }: { session: LiveSession }) {
           {session.startTime}
           {session.endTime ? ` – ${session.endTime}` : ` · ${session.durationMinutes} min`}
         </span>
-        {session.attendeesCount !== undefined && session.attendeesCount > 0 && (
+        {((session.participants?.length || session.attendeesCount || 0) > 0) && (
           <span className="flex items-center gap-1">
             <Users className="w-3.5 h-3.5" />
-            {session.attendeesCount} {session.status === 'live' ? 'in room' : 'attended'}
+            {session.participants?.length || session.attendeesCount} {session.status === 'live' ? 'in room' : 'attended'}
           </span>
         )}
       </div>
@@ -203,7 +203,7 @@ export default function LiveClassesPage() {
               <p className="font-bold text-lg leading-tight">{liveNow[0].title}</p>
               <p className="text-red-100 text-xs mt-1">
                 with {liveNow[0].instructorName}
-                {liveNow[0].attendeesCount ? ` · ${liveNow[0].attendeesCount} in room` : ''}
+                {(liveNow[0].participants?.length || liveNow[0].attendeesCount) ? ` · ${liveNow[0].participants?.length || liveNow[0].attendeesCount} in room` : ''}
               </p>
             </div>
             <Link

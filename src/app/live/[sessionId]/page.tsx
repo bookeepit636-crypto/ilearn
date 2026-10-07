@@ -17,6 +17,7 @@ import {
   Play,
   Radio,
   Users,
+  X,
   XCircle
 } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
@@ -142,14 +143,18 @@ function PreJoinScreen({
 export default function LiveSessionPage() {
   const params = useParams();
   const router = useRouter();
-  const { user, liveSessions, updateLiveSession } = useApp();
+  const { user, accounts, liveSessions, updateLiveSession } = useApp();
 
   const sessionId = params?.sessionId as string;
   const [session, setSession] = useState<LiveSession | null>(null);
   const [pageState, setPageState] = useState<PageState>('loading');
   const [hasJoined, setHasJoined] = useState(false);
   const [participantCount, setParticipantCount] = useState(0);
+  const [isRosterOpen, setIsRosterOpen] = useState(false);
   const joinTimeRef = useRef<string | null>(null);
+
+  // Real registered students from the database
+  const realStudents = accounts.filter((a) => a.role === 'student');
 
   // Resolve session from context
   useEffect(() => {
@@ -169,7 +174,6 @@ export default function LiveSessionPage() {
         setPageState('waiting');
         break;
       case 'live':
-        // Proceed directly into the video classroom like Google Meet / Zoom
         setPageState('live');
         break;
       case 'completed':
@@ -183,28 +187,112 @@ export default function LiveSessionPage() {
     }
   }, [sessionId, liveSessions]);
 
-  // Handle confirmed classroom entry (attendance tracking)
+  // Real-Time Eviction Listener:
+  // When instructor ends the session, students are kicked out immediately across devices
+  useEffect(() => {
+    if (!sessionId) return;
+
+    // 1. Cross-tab BroadcastChannel for 0ms eviction
+    let bc: BroadcastChannel | null = null;
+    try {
+      if (typeof window !== 'undefined' && typeof BroadcastChannel !== 'undefined') {
+        bc = new BroadcastChannel('bookkeepit_live_sync');
+        bc.onmessage = (e) => {
+          const data = e.data;
+          if (data) {
+            const updatedId = data.id || data.session?.id;
+            const updatedStatus = data.updates?.status || data.session?.status;
+            if (updatedId === sessionId) {
+              if (updatedStatus === 'completed') {
+                setPageState('completed');
+              } else if (updatedStatus === 'cancelled') {
+                setPageState('cancelled');
+              } else if (updatedStatus === 'live') {
+                setPageState('live');
+              }
+            }
+          }
+        };
+      }
+    } catch {}
+
+    // 2. High-frequency active poll every 2.5 seconds to detect server-side session end
+    const pollInterval = setInterval(async () => {
+      try {
+        const res = await fetch('/api/live', { cache: 'no-store' });
+        if (res.ok) {
+          const json = await res.json();
+          if (json.success && Array.isArray(json.sessions)) {
+            const current = json.sessions.find((s: LiveSession) => s.id === sessionId);
+            if (current) {
+              setSession(current);
+              if (current.status === 'completed') {
+                setPageState('completed');
+              } else if (current.status === 'cancelled') {
+                setPageState('cancelled');
+              }
+            }
+          }
+        }
+      } catch {}
+    }, 2500);
+
+    return () => {
+      bc?.close();
+      clearInterval(pollInterval);
+    };
+  }, [sessionId]);
+
+  // Handle confirmed classroom entry (real attendance tracking)
   const handleJoined = useCallback(() => {
     joinTimeRef.current = new Date().toISOString();
     setHasJoined(true);
-    // Increment attendees count in session state
+
     if (session) {
+      const studentDetails = user as any;
+      const participant = {
+        id: `part-${user.id || 'usr'}-${Date.now()}`,
+        sessionId: session.id,
+        userId: user.id || '',
+        userName: user.name,
+        userEmail: user.email,
+        studentId: studentDetails?.studentId,
+        program: studentDetails?.program,
+        joinedAt: new Date().toISOString(),
+        attendanceStatus: 'present' as const
+      };
+
+      const existingParticipants = session.participants || [];
+      const alreadyJoined = existingParticipants.some(
+        (p) => (p.userId && p.userId === user.id) || p.userName === user.name
+      );
+
+      const updatedParticipants = alreadyJoined
+        ? existingParticipants.map((p) =>
+            (p.userId && p.userId === user.id) || p.userName === user.name ? participant : p
+          )
+        : [...existingParticipants, participant];
+
       updateLiveSession(session.id, {
-        attendeesCount: (session.attendeesCount ?? 0) + 1
+        participants: updatedParticipants,
+        attendeesCount: updatedParticipants.length
       });
-      // Record attendance to Supabase Cloud
+
+      // Record attendance to database
       recordAttendanceToSupabase({
         id: `att-${session.id}-${Date.now()}`,
         sessionId: session.id,
-        userName: user?.name || 'Student',
-        userEmail: user?.email,
+        userId: user.id,
+        userName: user.name || 'Student',
+        userEmail: user.email,
+        studentId: studentDetails?.studentId,
+        program: studentDetails?.program,
         durationMinutes: session.durationMinutes || 60
       });
     }
   }, [session, updateLiveSession, user]);
 
   const handleLeft = useCallback(() => {
-    // When a participant leaves we could record left_at. For now just navigate back.
     router.push('/live');
   }, [router]);
 
@@ -216,19 +304,21 @@ export default function LiveSessionPage() {
     setParticipantCount((c) => Math.max(0, c - 1));
   }, []);
 
-  // Instructor: start a session from waiting state
+  // Instructor: start a session from waiting state (auto-records actual start time)
   const handleStartSession = useCallback(() => {
     if (!session) return;
-    updateLiveSession(session.id, { status: 'live' });
+    const actualStartTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+    updateLiveSession(session.id, { status: 'live', startTime: actualStartTime });
     setPageState('live');
   }, [session, updateLiveSession]);
 
-  // Instructor: end session
+  // Instructor: end session for everyone (auto-records actual end time)
   const handleEndSession = useCallback(() => {
     if (!session) return;
-    updateLiveSession(session.id, { status: 'completed' });
-    router.push('/live');
-  }, [session, updateLiveSession, router]);
+    const actualEndTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+    updateLiveSession(session.id, { status: 'completed', endTime: actualEndTime });
+    setPageState('completed');
+  }, [session, updateLiveSession]);
 
   /* ------------------------------------------------------------------ */
   /*  RENDER STATES                                                       */
@@ -317,12 +407,12 @@ export default function LiveSessionPage() {
               <span className="text-slate-400 font-semibold">Instructor:</span>
               <span className="font-bold text-slate-700">{session.instructorName}</span>
             </div>
-            {session.attendeesCount !== undefined && session.attendeesCount > 0 && (
-              <div className="flex items-center justify-between text-slate-600">
-                <span className="text-slate-400 font-semibold">Attended:</span>
-                <span className="font-bold text-slate-700">{session.attendeesCount} students</span>
-              </div>
-            )}
+            <div className="flex items-center justify-between text-slate-600">
+              <span className="text-slate-400 font-semibold">Attended:</span>
+              <span className="font-bold text-slate-700">
+                {session.participants?.length || session.attendeesCount || 0} students
+              </span>
+            </div>
           </div>
 
           {session.recordingUrl && (
@@ -388,6 +478,10 @@ export default function LiveSessionPage() {
                 <p className="font-bold text-slate-700">{session.courseTitle}</p>
               </div>
             )}
+            <div className="col-span-2">
+              <p className="text-slate-400 font-semibold text-[11px]">Registered Students</p>
+              <p className="font-bold text-slate-700">{realStudents.length} students enrolled</p>
+            </div>
           </div>
 
           {/* Admin-only: Start Session button */}
@@ -469,7 +563,7 @@ export default function LiveSessionPage() {
   // LIVE CLASSROOM VIEW
   // ----------------------------------------------------------------
   return (
-    <div className="flex-1 w-full h-[100dvh] flex flex-col bg-slate-950 overflow-hidden select-none">
+    <div className="flex-1 w-full h-[100dvh] flex flex-col bg-slate-950 overflow-hidden select-none relative">
       {/* Session top bar */}
       <div className="flex items-center justify-between gap-3 px-3 sm:px-5 py-2.5 bg-slate-900 border-b border-white/10 text-white shrink-0 z-10">
         <div className="flex items-center gap-3 min-w-0">
@@ -499,11 +593,22 @@ export default function LiveSessionPage() {
 
         {/* Right side controls */}
         <div className="flex items-center gap-2 shrink-0">
+          {/* Class Roster Button */}
+          <button
+            id="live-roster-btn"
+            onClick={() => setIsRosterOpen((v) => !v)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/20 text-white font-bold text-xs transition active:scale-95"
+            title="View Enrolled Students & Attendance"
+          >
+            <Users className="w-3.5 h-3.5 text-cyan-400" />
+            <span className="hidden sm:inline">Roster</span> ({realStudents.length})
+          </button>
+
           {user.role === 'admin' ? (
             <button
               id="live-end-session-btn"
               onClick={handleEndSession}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-red-600 hover:bg-red-700 text-white font-bold text-xs shadow-md shadow-red-600/30 transition"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-red-600 hover:bg-red-700 text-white font-bold text-xs shadow-md shadow-red-600/30 transition active:scale-95"
             >
               <XCircle className="w-3.5 h-3.5" />
               <span>End for All</span>
@@ -512,7 +617,7 @@ export default function LiveSessionPage() {
             <button
               id="live-leave-session-btn"
               onClick={handleLeft}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-700 hover:bg-slate-600 text-white font-bold text-xs transition"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-700 hover:bg-slate-600 text-white font-bold text-xs transition active:scale-95"
             >
               <ArrowLeft className="w-3.5 h-3.5" />
               <span>Leave</span>
@@ -521,19 +626,95 @@ export default function LiveSessionPage() {
         </div>
       </div>
 
-      {/* Jitsi Classroom fills remaining height */}
-      <div className="flex-1 w-full h-full min-h-0 relative flex flex-col bg-slate-950">
-        <JitsiClassroom
-          roomName={session.meetingRoomId}
-          displayName={user.name}
-          userEmail={user.email}
-          isInstructor={user.role === 'admin'}
-          sessionTitle={session.title}
-          onJoined={handleJoined}
-          onLeft={handleLeft}
-          onParticipantJoined={handleParticipantJoined}
-          onParticipantLeft={handleParticipantLeft}
-        />
+      {/* Main Classroom Area with optional Roster Drawer */}
+      <div className="flex-1 w-full h-full min-h-0 relative flex flex-row bg-slate-950 overflow-hidden">
+        {/* Jitsi Classroom */}
+        <div className="flex-1 h-full min-h-0 relative flex flex-col bg-slate-950">
+          <JitsiClassroom
+            roomName={session.meetingRoomId}
+            displayName={user.name}
+            userEmail={user.email}
+            isInstructor={user.role === 'admin'}
+            sessionTitle={session.title}
+            onJoined={handleJoined}
+            onLeft={handleLeft}
+            onParticipantJoined={handleParticipantJoined}
+            onParticipantLeft={handleParticipantLeft}
+          />
+        </div>
+
+        {/* Real Class Roster Drawer */}
+        {isRosterOpen && (
+          <aside className="w-80 sm:w-88 border-l border-white/10 bg-slate-900/95 backdrop-blur-md flex flex-col z-20 animate-in slide-in-from-right duration-200">
+            <div className="p-4 border-b border-white/10 flex items-center justify-between text-white">
+              <div className="flex items-center gap-2">
+                <Users className="w-4 h-4 text-cyan-400" />
+                <h3 className="font-bold text-sm">Class Roster</h3>
+              </div>
+              <button
+                onClick={() => setIsRosterOpen(false)}
+                className="p-1 rounded-lg text-white/60 hover:text-white hover:bg-white/10 transition"
+                title="Close"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-3 bg-slate-800/50 border-b border-white/5 text-[11px] text-white/70 flex items-center justify-between">
+              <span>{realStudents.length} Registered Students</span>
+              <span className="text-emerald-400 font-bold">
+                {session.participants?.length || 0} in Room
+              </span>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-3 space-y-2">
+              {realStudents.length === 0 ? (
+                <p className="text-xs text-white/50 text-center py-8">
+                  No registered students in the system.
+                </p>
+              ) : (
+                realStudents.map((st) => {
+                  const participant = session.participants?.find(
+                    (p) => p.userId === st.id || p.userEmail?.toLowerCase() === st.email.toLowerCase() || p.userName === st.name
+                  );
+                  const isPresent = Boolean(participant);
+
+                  return (
+                    <div
+                      key={st.id}
+                      className="p-2.5 rounded-xl bg-white/5 border border-white/5 flex items-center justify-between gap-3 text-xs"
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="w-7 h-7 rounded-full bg-cyan-500/20 border border-cyan-400/30 flex items-center justify-center font-bold text-cyan-300 text-[11px] shrink-0">
+                          {st.name.charAt(0).toUpperCase()}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="font-bold text-white truncate">{st.name}</p>
+                          <p className="text-[10px] text-white/50 truncate">
+                            {st.studentId || 'Student'} · {st.email}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="shrink-0">
+                        {isPresent ? (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                            Present
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center text-[10px] font-medium px-2 py-0.5 rounded-full bg-white/5 text-white/40">
+                            Enrolled
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </aside>
+        )}
       </div>
     </div>
   );
