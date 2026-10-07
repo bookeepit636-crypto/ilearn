@@ -31,6 +31,7 @@ export interface JitsiClassroomProps {
   onLeft?: () => void;
   onParticipantJoined?: (participant: { id: string; displayName: string }) => void;
   onParticipantLeft?: (participant: { id: string }) => void;
+  onParticipantCountChanged?: (count: number) => void;
 }
 
 const JitsiClassroom: React.FC<JitsiClassroomProps> = ({
@@ -43,29 +44,50 @@ const JitsiClassroom: React.FC<JitsiClassroomProps> = ({
   onJoined,
   onLeft,
   onParticipantJoined,
-  onParticipantLeft
+  onParticipantLeft,
+  onParticipantCountChanged
 }) => {
   const apiRef = useRef<any>(null);
 
   const handleApiReady = (api: any) => {
     apiRef.current = api;
 
+    const updateCount = () => {
+      try {
+        if (api && typeof api.getNumberOfParticipants === 'function') {
+          const count = api.getNumberOfParticipants();
+          if (typeof count === 'number' && count >= 0) {
+            onParticipantCountChanged?.(count);
+          }
+        }
+      } catch {}
+    };
+
     // Attach event listeners
     api.addEventListener('videoConferenceJoined', () => {
       onJoined?.();
+      updateCount();
     });
 
     api.addEventListener('videoConferenceLeft', () => {
       onLeft?.();
+      updateCount();
     });
 
     api.addEventListener('participantJoined', (e: any) => {
       onParticipantJoined?.({ id: e.id, displayName: e.displayName || 'Participant' });
+      updateCount();
     });
 
     api.addEventListener('participantLeft', (e: any) => {
       onParticipantLeft?.({ id: e.id });
+      updateCount();
     });
+
+    // Periodic count check to guarantee accuracy
+    const countTimer = setInterval(updateCount, 1500);
+    // Initial query
+    setTimeout(updateCount, 500);
   };
 
   const configOverwrite: IJitsiMeetingProps['configOverwrite'] = {

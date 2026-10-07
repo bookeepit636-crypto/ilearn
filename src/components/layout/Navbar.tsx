@@ -28,7 +28,6 @@ export const Navbar: React.FC = () => {
     setIsSearchOpen,
     setIsNotificationDrawerOpen,
     setIsMobileSidebarOpen,
-    toggleRole,
     logout
   } = useApp();
 
@@ -163,37 +162,6 @@ export const Navbar: React.FC = () => {
             )}
           </button>
 
-          {/* Student vs Admin Switcher */}
-          <button
-            onClick={() => {
-              if (user.role === 'student') {
-                toggleRole();
-                router.push('/admin');
-              } else {
-                toggleRole();
-                router.push('/');
-              }
-            }}
-            className={`p-2 sm:px-3 sm:py-1.5 rounded-full text-xs font-bold transition flex items-center gap-1 border ${
-              user.role === 'admin'
-                ? 'bg-indigo-600 text-white border-indigo-500'
-                : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
-            }`}
-            title="Toggle between Student View and Admin Mode"
-          >
-            {user.role === 'admin' ? (
-              <>
-                <ShieldCheck className="w-3.5 h-3.5" />
-                <span className="hidden md:inline">Admin Mode</span>
-              </>
-            ) : (
-              <>
-                <User className="w-3.5 h-3.5 text-[#0077b6]" />
-                <span className="hidden md:inline">Student</span>
-              </>
-            )}
-          </button>
-
           {/* TOP RIGHT PROFILE VIEW WITH INTERACTIVE DROPDOWN MENU */}
           <div className="relative" ref={dropdownRef}>
             <button
@@ -237,6 +205,17 @@ export const Navbar: React.FC = () => {
                     <Settings className="w-4 h-4 text-slate-500" />
                     <span>Settings</span>
                   </Link>
+
+                  {user.role === 'admin' && (
+                    <Link
+                      href="/admin"
+                      onClick={() => setIsProfileDropdownOpen(false)}
+                      className="flex items-center gap-2.5 px-4 py-2 text-xs font-semibold text-indigo-700 bg-indigo-50/50 hover:bg-indigo-100/70 transition"
+                    >
+                      <ShieldCheck className="w-4 h-4 text-indigo-600" />
+                      <span>Admin Control Center</span>
+                    </Link>
+                  )}
                 </div>
 
                 <div className="pt-1 border-t border-slate-100">

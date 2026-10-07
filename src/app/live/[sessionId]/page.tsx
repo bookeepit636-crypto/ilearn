@@ -150,6 +150,8 @@ export default function LiveSessionPage() {
   const [pageState, setPageState] = useState<PageState>('loading');
   const [hasJoined, setHasJoined] = useState(false);
   const [participantCount, setParticipantCount] = useState(0);
+  const [jitsiCount, setJitsiCount] = useState(1);
+  const [activeRemoteParticipants, setActiveRemoteParticipants] = useState<Map<string, string>>(new Map());
   const [isRosterOpen, setIsRosterOpen] = useState(false);
   const joinTimeRef = useRef<string | null>(null);
 
@@ -293,16 +295,78 @@ export default function LiveSessionPage() {
   }, [session, updateLiveSession, user]);
 
   const handleLeft = useCallback(() => {
+    try {
+      if (session) {
+        fetch('/api/live', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'leave',
+            sessionId: session.id,
+            userId: user.id,
+            userName: user.name
+          }),
+          keepalive: true
+        }).catch(() => {});
+      }
+    } catch {}
     router.push('/live');
-  }, [router]);
+  }, [router, session, user]);
 
-  const handleParticipantJoined = useCallback(() => {
+  // Clean exit on window beforeunload
+  useEffect(() => {
+    const onBeforeUnload = () => {
+      try {
+        if (session) {
+          fetch('/api/live', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              action: 'leave',
+              sessionId: session.id,
+              userId: user.id,
+              userName: user.name
+            }),
+            keepalive: true
+          }).catch(() => {});
+        }
+      } catch {}
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => {
+      window.removeEventListener('beforeunload', onBeforeUnload);
+    };
+  }, [session, user]);
+
+  const handleParticipantJoined = useCallback((p: { id: string; displayName: string }) => {
+    setActiveRemoteParticipants((prev) => {
+      const next = new Map(prev);
+      next.set(p.id, p.displayName || 'Participant');
+      return next;
+    });
     setParticipantCount((c) => c + 1);
   }, []);
 
-  const handleParticipantLeft = useCallback(() => {
+  const handleParticipantLeft = useCallback((p: { id: string }) => {
+    setActiveRemoteParticipants((prev) => {
+      const next = new Map(prev);
+      next.delete(p.id);
+      return next;
+    });
     setParticipantCount((c) => Math.max(0, c - 1));
   }, []);
+
+  const handleParticipantCountChanged = useCallback((count: number) => {
+    if (typeof count === 'number' && count > 0) {
+      setJitsiCount(count);
+    }
+  }, []);
+
+  // Live active in room count:
+  // When only admin is in the room: 1
+  // When 1 student is in the room: 2
+  // When that student leaves: 1
+  const liveInRoomCount = Math.max(1, jitsiCount > 0 ? jitsiCount : (activeRemoteParticipants.size + 1));
 
   // Instructor: start a session from waiting state (auto-records actual start time)
   const handleStartSession = useCallback(() => {
@@ -567,14 +631,18 @@ export default function LiveSessionPage() {
       {/* Session top bar */}
       <div className="flex items-center justify-between gap-3 px-3 sm:px-5 py-2.5 bg-slate-900 border-b border-white/10 text-white shrink-0 z-10">
         <div className="flex items-center gap-3 min-w-0">
-          <Link
-            href="/live"
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-white/10 hover:bg-white/20 text-white/80 hover:text-white text-xs font-semibold transition"
-            title="Leave Meeting"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            <span className="hidden sm:inline">Leave</span>
-          </Link>
+          {/* Admin does NOT have Leave button on the left; only students have it */}
+          {user.role !== 'admin' && (
+            <Link
+              href="/live"
+              onClick={handleLeft}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-white/10 hover:bg-white/20 text-white/80 hover:text-white text-xs font-semibold transition"
+              title="Leave Meeting"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span className="hidden sm:inline">Leave</span>
+            </Link>
+          )}
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               <span className="inline-flex items-center gap-1 text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-red-500 text-white shadow-sm shadow-red-500/50">
@@ -586,14 +654,14 @@ export default function LiveSessionPage() {
             <p className="text-white/60 text-[10px] sm:text-[11px] truncate">
               {session.instructorName}
               {session.courseTitle ? ` · ${session.courseTitle}` : ''}
-              {participantCount > 0 ? ` · ${participantCount + 1} connected` : ''}
+              {` · ${liveInRoomCount} in room`}
             </p>
           </div>
         </div>
 
         {/* Right side controls */}
         <div className="flex items-center gap-2 shrink-0">
-          {/* Class Roster Button */}
+          {/* Class Roster Button - displays exact live count */}
           <button
             id="live-roster-btn"
             onClick={() => setIsRosterOpen((v) => !v)}
@@ -601,7 +669,7 @@ export default function LiveSessionPage() {
             title="View Enrolled Students & Attendance"
           >
             <Users className="w-3.5 h-3.5 text-cyan-400" />
-            <span className="hidden sm:inline">Roster</span> ({realStudents.length})
+            <span className="hidden sm:inline">Roster</span> ({liveInRoomCount})
           </button>
 
           {user.role === 'admin' ? (
@@ -640,6 +708,7 @@ export default function LiveSessionPage() {
             onLeft={handleLeft}
             onParticipantJoined={handleParticipantJoined}
             onParticipantLeft={handleParticipantLeft}
+            onParticipantCountChanged={handleParticipantCountChanged}
           />
         </div>
 
@@ -663,7 +732,7 @@ export default function LiveSessionPage() {
             <div className="p-3 bg-slate-800/50 border-b border-white/5 text-[11px] text-white/70 flex items-center justify-between">
               <span>{realStudents.length} Registered Students</span>
               <span className="text-emerald-400 font-bold">
-                {session.participants?.length || 0} in Room
+                {liveInRoomCount} in Room
               </span>
             </div>
 
@@ -677,7 +746,14 @@ export default function LiveSessionPage() {
                   const participant = session.participants?.find(
                     (p) => p.userId === st.id || p.userEmail?.toLowerCase() === st.email.toLowerCase() || p.userName === st.name
                   );
-                  const isPresent = Boolean(participant);
+
+                  // Active presence: student is present ONLY if actively in the room and liveInRoomCount > 1
+                  const isRemotelyPresent = Array.from(activeRemoteParticipants.values()).some((name) =>
+                    name.toLowerCase().includes(st.name.toLowerCase()) || st.name.toLowerCase().includes(name.toLowerCase())
+                  );
+                  const isCurrentActiveStudent = (user.id === st.id || user.email?.toLowerCase() === st.email?.toLowerCase()) && hasJoined;
+                  const isPresent = (isRemotelyPresent || isCurrentActiveStudent) && liveInRoomCount > 1;
+                  const hasAttended = Boolean(participant);
 
                   return (
                     <div
@@ -701,6 +777,10 @@ export default function LiveSessionPage() {
                           <span className="inline-flex items-center gap-1 text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
                             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
                             Present
+                          </span>
+                        ) : hasAttended ? (
+                          <span className="inline-flex items-center text-[10px] font-medium px-2 py-0.5 rounded-full bg-slate-700/50 text-slate-300 border border-slate-600/40">
+                            Left Room
                           </span>
                         ) : (
                           <span className="inline-flex items-center text-[10px] font-medium px-2 py-0.5 rounded-full bg-white/5 text-white/40">

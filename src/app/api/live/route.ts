@@ -99,7 +99,49 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: true, session: updatedSession, sessions: updatedStore });
     }
 
-    // 2. Regular Upsert Session
+    // 2. Participant Leave Action
+    if (body.action === 'leave') {
+      const { sessionId, userId, userName } = body as {
+        sessionId: string;
+        userId?: string;
+        userName: string;
+      };
+
+      if (!sessionId) {
+        return NextResponse.json({ success: false, error: 'Invalid leave payload' }, { status: 400 });
+      }
+
+      const current = getStore();
+      const existing = current.find((s) => s.id === sessionId);
+      if (!existing) {
+        return NextResponse.json({ success: false, error: 'Session not found' }, { status: 404 });
+      }
+
+      const participantsList = existing.participants || [];
+      const updatedParticipants = participantsList.map((p) => {
+        if ((userId && p.userId === userId) || (userName && p.userName === userName)) {
+          return {
+            ...p,
+            leftAt: new Date().toISOString(),
+            attendanceStatus: 'left' as const
+          };
+        }
+        return p;
+      });
+
+      const updatedSession: LiveSession = {
+        ...existing,
+        participants: updatedParticipants,
+        updatedAt: new Date().toISOString()
+      };
+
+      const updatedStore = current.map((s) => (s.id === sessionId ? updatedSession : s));
+      setStore(updatedStore);
+
+      return NextResponse.json({ success: true, session: updatedSession, sessions: updatedStore });
+    }
+
+    // 3. Regular Upsert Session
     const session = body.session as LiveSession;
 
     if (!session || !session.id || !session.title) {

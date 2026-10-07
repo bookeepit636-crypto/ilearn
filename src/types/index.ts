@@ -171,7 +171,7 @@ export interface LiveSessionParticipant {
   program?: string;
   joinedAt: string;  // ISO timestamp
   leftAt?: string;   // ISO timestamp
-  attendanceStatus: 'present' | 'late' | 'absent';
+  attendanceStatus: 'present' | 'late' | 'absent' | 'left';
   durationMinutes?: number;
 }
 
