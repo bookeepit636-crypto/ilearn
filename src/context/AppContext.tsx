@@ -172,6 +172,29 @@ export const initialStudentAccount: UserAccount = {
   password: 'student123'
 };
 
+// Purge helper for old hardcoded mock sessions so they never linger in any user's localStorage
+export const isMockLiveSession = (s: any): boolean => {
+  if (!s || typeof s !== 'object') return false;
+  const id = String(s.id || '');
+  const title = String(s.title || '');
+  const room = String(s.meetingRoomId || '');
+  const instructor = String(s.instructorName || '');
+  return (
+    id === 'ls-001' ||
+    id === 'ls-002' ||
+    id === 'ls-003' ||
+    id === 'ls-004' ||
+    id === 'ls-005' ||
+    room.includes('trial-balance-ls001') ||
+    room.includes('financial-statements-ls002') ||
+    room.includes('debits-credits-ls003') ||
+    title.includes('Trial Balance Adjustments – Live Review') ||
+    title.includes('Financial Statements Masterclass') ||
+    title.includes('Debits & Credits Crash Course') ||
+    (instructor.includes('Eleanor Vance') && id.startsWith('ls-00'))
+  );
+};
+
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<UserProfile>(initialProfile);
   const [accounts, setAccounts] = useState<UserAccount[]>([initialStudentAccount, fixedAdminProfile]);
@@ -186,7 +209,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [notifications, setNotifications] = useState<NotificationItem[]>(initialNotifications);
   const [faqs] = useState<FAQItem[]>(initialFAQs);
   const [userProgress, setUserProgress] = useState<Record<string, UserProgressRecord>>({});
-  const [liveSessions, setLiveSessions] = useState<LiveSession[]>(initialLiveSessions);
+  const [liveSessions, setLiveSessions] = useState<LiveSession[]>([]);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -250,7 +273,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (parsed.schedules) setSchedules(parsed.schedules);
         if (parsed.notifications) setNotifications(parsed.notifications);
         if (parsed.liveSessions && Array.isArray(parsed.liveSessions)) {
-          setLiveSessions(parsed.liveSessions);
+          // Actively purge any old mock demo sessions from existing users' localStorage
+          const cleanSessions = parsed.liveSessions.filter((s: LiveSession) => !isMockLiveSession(s));
+          setLiveSessions(cleanSessions);
+          try {
+            parsed.liveSessions = cleanSessions;
+            localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(parsed));
+          } catch {}
         }
       }
     } catch (e) {
@@ -311,30 +340,35 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (isMounted && cloudSessions && Array.isArray(cloudSessions)) {
           setLiveSessions((prevSessions) => {
             const map = new Map<string, LiveSession>();
-            prevSessions.forEach((s) => map.set(s.id, s));
-            cloudSessions.forEach((incoming) => {
-              const existing = map.get(incoming.id);
-              if (existing) {
-                // If existing session is in terminal state (completed or cancelled),
-                // NEVER allow a stale incoming state (scheduled or live) to revert it!
-                if (isTerminalStatus(existing.status) && !isTerminalStatus(incoming.status)) {
-                  map.set(incoming.id, {
-                    ...incoming,
-                    status: existing.status,
-                    endTime: existing.endTime || incoming.endTime,
-                    participants: incoming.participants || existing.participants || []
-                  });
+            prevSessions
+              .filter((s) => !isMockLiveSession(s))
+              .forEach((s) => map.set(s.id, s));
+
+            cloudSessions
+              .filter((s) => !isMockLiveSession(s))
+              .forEach((incoming) => {
+                const existing = map.get(incoming.id);
+                if (existing) {
+                  // If existing session is in terminal state (completed or cancelled),
+                  // NEVER allow a stale incoming state (scheduled or live) to revert it!
+                  if (isTerminalStatus(existing.status) && !isTerminalStatus(incoming.status)) {
+                    map.set(incoming.id, {
+                      ...incoming,
+                      status: existing.status,
+                      endTime: existing.endTime || incoming.endTime,
+                      participants: incoming.participants || existing.participants || []
+                    });
+                  } else {
+                    map.set(incoming.id, {
+                      ...existing,
+                      ...incoming,
+                      participants: incoming.participants || existing.participants || []
+                    });
+                  }
                 } else {
-                  map.set(incoming.id, {
-                    ...existing,
-                    ...incoming,
-                    participants: incoming.participants || existing.participants || []
-                  });
+                  map.set(incoming.id, incoming);
                 }
-              } else {
-                map.set(incoming.id, incoming);
-              }
-            });
+              });
             return Array.from(map.values());
           });
         }
@@ -365,7 +399,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         try {
           const parsed = JSON.parse(e.newValue);
           if (parsed.liveSessions && Array.isArray(parsed.liveSessions)) {
-            setLiveSessions(parsed.liveSessions);
+            setLiveSessions(parsed.liveSessions.filter((s: LiveSession) => !isMockLiveSession(s)));
           }
         } catch {
           // ignore
@@ -417,7 +451,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         schedules,
         notifications,
         userProgress,
-        liveSessions
+        liveSessions: liveSessions.filter((s) => !isMockLiveSession(s))
       };
       localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(stateToSave));
     } catch (e) {

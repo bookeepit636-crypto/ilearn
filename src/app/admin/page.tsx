@@ -30,7 +30,7 @@ import {
   ChevronUp,
   XCircle
 } from 'lucide-react';
-import { useApp } from '@/context/AppContext';
+import { useApp, isMockLiveSession } from '@/context/AppContext';
 import { Course, DownloadableMaterial, Lesson, LiveSession, LiveSessionStatus, Quiz, QuizQuestion, Topic, UserAccount, UserProfile, VideoLesson } from '@/types';
 import { uploadToCloudinary } from '@/lib/cloudinary';
 import { saveVideoBlob, deleteVideoBlob, generateVideoThumbnail } from '@/lib/videoStorage';
@@ -1590,7 +1590,7 @@ export default function AdminPage() {
       {/* TAB: LIVE CLASSES MANAGER */}
       {adminTab === 'live' && (
         <LiveClassesAdminPanel
-          liveSessions={liveSessions}
+          liveSessions={liveSessions.filter((s) => !isMockLiveSession(s))}
           courses={courses}
           accounts={accounts}
           user={user}

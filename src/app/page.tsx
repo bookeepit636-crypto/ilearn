@@ -16,12 +16,12 @@ import {
   TrendingUp,
   Video
 } from 'lucide-react';
-import { useApp } from '@/context/AppContext';
+import { useApp, isMockLiveSession } from '@/context/AppContext';
 
 export default function DashboardPage() {
   const { user, courses, notifications, schedules, liveSessions } = useApp();
 
-  const liveNow = liveSessions.filter((s) => s.status === 'live');
+  const liveNow = liveSessions.filter((s) => !isMockLiveSession(s) && s.status === 'live');
 
   const announcements = notifications.filter((n) => n.category === 'announcement').slice(0, 2);
   const upcomingEvents = schedules.filter((s) => !s.isCompleted).slice(0, 3);

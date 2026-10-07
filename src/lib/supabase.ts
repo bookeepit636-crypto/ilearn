@@ -161,18 +161,35 @@ export async function supabaseLogout() {
 // LIVE SESSIONS DATABASE PERSISTENCE
 // ==========================================
 
+// Cached flags to prevent repeated 404 console errors when Supabase tables are not created
+let liveSessionsTableAvailable =
+  typeof window !== 'undefined'
+    ? sessionStorage.getItem('supabase_no_live_table') !== 'true'
+    : true;
+let liveAttendanceTableAvailable =
+  typeof window !== 'undefined'
+    ? sessionStorage.getItem('supabase_no_att_table') !== 'true'
+    : true;
+
 export async function fetchLiveSessionsFromSupabase(): Promise<LiveSession[]> {
   let cloudSessions: LiveSession[] = [];
 
-  // 1. Try Supabase first if configured
-  if (isSupabaseConfigured()) {
+  // 1. Try Supabase first if configured and table exists
+  if (isSupabaseConfigured() && liveSessionsTableAvailable) {
     try {
-      const { data, error } = await supabase
+      const { data, error, status } = await supabase
         .from('live_sessions')
         .select('*')
         .order('date', { ascending: true });
 
-      if (!error && data && Array.isArray(data) && data.length > 0) {
+      if (error) {
+        if (status === 404 || error.code === '42P01' || error.message?.includes('Could not find the table')) {
+          liveSessionsTableAvailable = false;
+          try {
+            if (typeof window !== 'undefined') sessionStorage.setItem('supabase_no_live_table', 'true');
+          } catch {}
+        }
+      } else if (data && Array.isArray(data) && data.length > 0) {
         cloudSessions = data.map((row: any) => ({
           id: row.id,
           title: row.title,
@@ -193,7 +210,7 @@ export async function fetchLiveSessionsFromSupabase(): Promise<LiveSession[]> {
         }));
       }
     } catch {
-      // Ignore Supabase table not created error
+      liveSessionsTableAvailable = false;
     }
   }
 
@@ -236,10 +253,10 @@ export async function saveLiveSessionToSupabase(session: LiveSession): Promise<b
     // ignore
   }
 
-  // 2. Also persist to Supabase if configured
-  if (!isSupabaseConfigured()) return true;
+  // 2. Also persist to Supabase if configured and table exists
+  if (!isSupabaseConfigured() || !liveSessionsTableAvailable) return true;
   try {
-    const { error } = await supabase.from('live_sessions').upsert(
+    const { error, status } = await supabase.from('live_sessions').upsert(
       {
         id: session.id,
         title: session.title,
@@ -261,12 +278,20 @@ export async function saveLiveSessionToSupabase(session: LiveSession): Promise<b
     );
 
     if (error) {
-      console.warn('Supabase save live_session note:', error.message);
+      if (status === 404 || error.code === '42P01' || error.message?.includes('Could not find the table')) {
+        liveSessionsTableAvailable = false;
+        try {
+          if (typeof window !== 'undefined') sessionStorage.setItem('supabase_no_live_table', 'true');
+        } catch {}
+      }
       return false;
     }
     return true;
   } catch (err) {
-    console.warn('Failed to save live_session to Supabase:', err);
+    liveSessionsTableAvailable = false;
+    try {
+      if (typeof window !== 'undefined') sessionStorage.setItem('supabase_no_live_table', 'true');
+    } catch {}
     return false;
   }
 }
@@ -280,16 +305,24 @@ export async function deleteLiveSessionFromSupabase(id: string): Promise<boolean
   }
 
   // 2. Delete from Supabase
-  if (!isSupabaseConfigured()) return true;
+  if (!isSupabaseConfigured() || !liveSessionsTableAvailable) return true;
   try {
-    const { error } = await supabase.from('live_sessions').delete().eq('id', id);
+    const { error, status } = await supabase.from('live_sessions').delete().eq('id', id);
     if (error) {
-      console.warn('Supabase delete live_session warning:', error.message);
+      if (status === 404 || error.code === '42P01' || error.message?.includes('Could not find the table')) {
+        liveSessionsTableAvailable = false;
+        try {
+          if (typeof window !== 'undefined') sessionStorage.setItem('supabase_no_live_table', 'true');
+        } catch {}
+      }
       return false;
     }
     return true;
   } catch (err) {
-    console.warn('Failed to delete live_session from Supabase:', err);
+    liveSessionsTableAvailable = false;
+    try {
+      if (typeof window !== 'undefined') sessionStorage.setItem('supabase_no_live_table', 'true');
+    } catch {}
     return false;
   }
 }
@@ -330,10 +363,10 @@ export async function recordAttendanceToSupabase(attendance: {
     // ignore
   }
 
-  // 2. Also record to Supabase if configured
-  if (!isSupabaseConfigured()) return true;
+  // 2. Also record to Supabase if configured and table exists
+  if (!isSupabaseConfigured() || !liveAttendanceTableAvailable) return true;
   try {
-    const { error } = await supabase.from('live_attendance').upsert({
+    const { error, status } = await supabase.from('live_attendance').upsert({
       id: attendance.id,
       session_id: attendance.sessionId,
       user_id: attendance.userId || null,
@@ -342,12 +375,17 @@ export async function recordAttendanceToSupabase(attendance: {
       duration_minutes: attendance.durationMinutes || 0
     });
     if (error) {
-      console.warn('Supabase record attendance note:', error.message);
+      if (status === 404 || error.code === '42P01' || error.message?.includes('Could not find the table')) {
+        liveAttendanceTableAvailable = false;
+        try {
+          if (typeof window !== 'undefined') sessionStorage.setItem('supabase_no_att_table', 'true');
+        } catch {}
+      }
       return false;
     }
     return true;
   } catch (err) {
-    console.warn('Failed to record attendance to Supabase:', err);
+    liveAttendanceTableAvailable = false;
     return false;
   }
 }

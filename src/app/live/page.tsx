@@ -14,7 +14,7 @@ import {
   Video,
   XCircle
 } from 'lucide-react';
-import { useApp } from '@/context/AppContext';
+import { useApp, isMockLiveSession } from '@/context/AppContext';
 import { LiveSession, LiveSessionStatus } from '@/types';
 
 const STATUS_CONFIG: Record<LiveSessionStatus, { label: string; pill: string; dot?: string }> = {
@@ -159,17 +159,18 @@ export default function LiveClassesPage() {
   const { liveSessions } = useApp();
   const [activeTab, setActiveTab] = useState<FilterTab>('all');
 
-  const liveNow = liveSessions.filter((s) => s.status === 'live');
+  const cleanSessions = liveSessions.filter((s) => !isMockLiveSession(s));
+  const liveNow = cleanSessions.filter((s) => s.status === 'live');
   const filtered =
     activeTab === 'all'
-      ? liveSessions
-      : liveSessions.filter((s) => s.status === activeTab);
+      ? cleanSessions
+      : cleanSessions.filter((s) => s.status === activeTab);
 
   const tabs: { key: FilterTab; label: string; count: number }[] = [
-    { key: 'all', label: 'All Sessions', count: liveSessions.length },
+    { key: 'all', label: 'All Sessions', count: cleanSessions.length },
     { key: 'live', label: '🔴 Live Now', count: liveNow.length },
-    { key: 'scheduled', label: 'Upcoming', count: liveSessions.filter((s) => s.status === 'scheduled').length },
-    { key: 'completed', label: 'Past Replays', count: liveSessions.filter((s) => s.status === 'completed').length }
+    { key: 'scheduled', label: 'Upcoming', count: cleanSessions.filter((s) => s.status === 'scheduled').length },
+    { key: 'completed', label: 'Past Replays', count: cleanSessions.filter((s) => s.status === 'completed').length }
   ];
 
   return (
