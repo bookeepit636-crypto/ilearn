@@ -11,19 +11,24 @@ import {
 import { useApp } from '@/context/AppContext';
 
 export default function SettingsPage() {
-  const { resetAllData } = useApp();
+  const { resetAllData, changeAccountPassword } = useApp();
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [statusMsg, setStatusMsg] = useState('');
 
-  const handleChangePassword = (e: React.FormEvent) => {
+  const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
     if (newPassword !== confirmPassword) {
       setStatusMsg('Error: New passwords do not match.');
       return;
     }
-    setStatusMsg('Success: Password updated securely!');
+    const res = await changeAccountPassword(newPassword, currentPassword);
+    if (!res.success) {
+      setStatusMsg(`Error: ${res.error || 'Failed to update password.'}`);
+      return;
+    }
+    setStatusMsg('Success: Password updated securely! Your new password is now active.');
     setCurrentPassword('');
     setNewPassword('');
     setConfirmPassword('');

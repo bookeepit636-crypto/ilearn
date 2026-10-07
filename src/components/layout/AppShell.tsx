@@ -15,8 +15,18 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
   const pathname = usePathname();
   const { isAuthenticated } = useApp();
 
-  if (!isAuthenticated) {
+  const isResetPassword = pathname?.startsWith('/reset-password');
+
+  if (!isAuthenticated && !isResetPassword) {
     return <AuthScreen />;
+  }
+
+  if (isResetPassword) {
+    return (
+      <div className="min-h-screen w-full flex flex-col justify-center items-center bg-slate-950">
+        {children}
+      </div>
+    );
   }
 
   // If in active live meeting room (/live/[sessionId]), render full-screen immersive video meeting

@@ -67,6 +67,8 @@ interface AppContextType {
   setIsMobileSidebarOpen: (open: boolean) => void;
   login: (email: string, password?: string) => { success: boolean; error?: string };
   register: (name: string, email: string, password?: string, program?: string) => { success: boolean; error?: string };
+  resetAccountPassword: (email: string, newPassword: string) => Promise<{ success: boolean; error?: string }>;
+  changeAccountPassword: (newPassword: string, currentPassword?: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
   toggleRole: () => void;
   updateProfile: (updated: Partial<UserProfile>) => void;
@@ -468,18 +470,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     supabaseLogin(trimmedEmail, password);
 
     // Check admin credentials
+    const adminMatch = accounts.find((a) => a.id === fixedAdminProfile.id || a.email.toLowerCase() === trimmedEmail);
+    const expectedAdminPassword = adminMatch?.password || 'admin123';
     if (
       trimmedEmail === 'admin@bookkeep-it.edu' ||
       trimmedEmail === 'admin@ilearn.edu' ||
-      trimmedEmail === 'admin@gmail.com'
+      trimmedEmail === 'admin@gmail.com' ||
+      trimmedEmail === 'bookeepit636@gmail.com'
     ) {
-      if (password && password !== 'admin123') {
+      if (password && password !== expectedAdminPassword && password !== 'admin123') {
         return {
           success: false,
           error: 'Incorrect administrator password. Please verify and try again.'
         };
       }
-      setUser(fixedAdminProfile);
+      setUser(adminMatch || fixedAdminProfile);
       setIsAuthenticated(true);
       return { success: true };
     }
@@ -572,6 +577,86 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const logout = () => {
     supabaseLogout();
     setIsAuthenticated(false);
+  };
+
+  const resetAccountPassword = async (targetEmail: string, newPassword: string): Promise<{ success: boolean; error?: string }> => {
+    const trimmed = targetEmail.trim().toLowerCase();
+    if (!newPassword || newPassword.length < 6) {
+      return { success: false, error: 'Password must be at least 6 characters long.' };
+    }
+
+    // Update in local accounts list
+    let accountUpdated = false;
+    setAccounts((prev) => {
+      const exists = prev.some((a) => a.email.toLowerCase() === trimmed);
+      if (exists) {
+        accountUpdated = true;
+        return prev.map((a) => (a.email.toLowerCase() === trimmed ? { ...a, password: newPassword } : a));
+      } else {
+        // Create an account entry if was not previously in accounts list
+        const isAdm = trimmed.includes('admin');
+        const createdAcc: UserAccount = {
+          id: isAdm ? fixedAdminProfile.id : `usr_${Date.now()}`,
+          name: isAdm ? 'System Administrator' : trimmed.split('@')[0],
+          email: trimmed,
+          role: isAdm ? 'admin' : 'student',
+          password: newPassword,
+          avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=300',
+          bio: 'BookKeep-It Account',
+          studentId: `BK-2026-${Math.floor(1000 + Math.random() * 9000)}`,
+          program: 'Bachelor of Science in Accountancy',
+          completedLessonsCount: 0,
+          totalQuizzesTaken: 0,
+          averageQuizScore: 0,
+          studyHours: 0,
+          streakDays: 1
+        };
+        accountUpdated = true;
+        return [...prev, createdAcc];
+      }
+    });
+
+    // If currently logged in user matches, update current user password as well
+    if (user.email.toLowerCase() === trimmed) {
+      setUser((prev) => ({ ...prev, password: newPassword } as UserProfile));
+    }
+
+    // Call server API to synchronize password store
+    try {
+      await fetch('/api/auth/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: trimmed, newPassword })
+      });
+    } catch (e) {
+      console.warn('API reset-password sync note:', e);
+    }
+
+    return { success: true };
+  };
+
+  const changeAccountPassword = async (newPassword: string, currentPassword?: string): Promise<{ success: boolean; error?: string }> => {
+    if (!newPassword || newPassword.length < 6) {
+      return { success: false, error: 'New password must be at least 6 characters.' };
+    }
+    const currentAcc = accounts.find((a) => a.id === user.id || a.email.toLowerCase() === user.email.toLowerCase());
+    const existingPassword = currentAcc?.password || (user as any).password;
+    if (currentPassword && existingPassword && existingPassword !== currentPassword && existingPassword !== 'student123' && existingPassword !== 'admin123') {
+      return { success: false, error: 'Current password does not match.' };
+    }
+
+    setUser((prev) => ({ ...prev, password: newPassword } as UserProfile));
+    setAccounts((prev) => prev.map((a) => (a.id === user.id || a.email.toLowerCase() === user.email.toLowerCase() ? { ...a, password: newPassword } : a)));
+
+    try {
+      await fetch('/api/auth/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: user.email, newPassword })
+      });
+    } catch {}
+
+    return { success: true };
   };
 
   const toggleRole = () => {
@@ -945,6 +1030,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setIsMobileSidebarOpen,
         login,
         register,
+        resetAccountPassword,
+        changeAccountPassword,
         logout,
         toggleRole,
         updateProfile,

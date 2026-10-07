@@ -182,7 +182,7 @@ export default function LiveClassesPage() {
           <h1 className="text-2xl font-black text-slate-800">Live Classes</h1>
         </div>
         <p className="text-sm text-slate-500">
-          Join live virtual bookkeeping sessions, reviews, and Q&A classes with your instructors — all inside iLearn.
+          Join live virtual bookkeeping sessions, reviews, and Q&A classes with your instructors — all inside BookKeep-It.
         </p>
       </div>
 

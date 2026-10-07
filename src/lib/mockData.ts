@@ -3,7 +3,7 @@ import { Course, DownloadableMaterial, FAQItem, LiveSession, NotificationItem, Q
 export const initialProfile: UserProfile = {
   id: 'usr_001',
   name: 'Alex Morgan',
-  email: 'alex.morgan@student.ilearn.edu',
+  email: 'alex.morgan@student.bookkeep-it.edu',
   role: 'student',
   avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=300',
   bio: 'Second-year Accounting Student passionate about mastering automated bookkeeping and financial analysis.',
