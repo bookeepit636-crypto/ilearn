@@ -2,6 +2,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { AlertTriangle, Loader2 } from 'lucide-react';
+import { supabase } from '@/lib/supabase';
 
 export interface JitsiClassroomProps {
   sessionId?: string;
@@ -72,33 +73,51 @@ const JitsiClassroom: React.FC<JitsiClassroomProps> = ({
         setLoading(true);
         setInitError(null);
 
-        // 1. Fetch server-signed JaaS JWT if JaaS credentials exist
+        // 1. Fetch server-signed JaaS JWT with strict server-side authorization
         let jwtToken: string | null = null;
+        let serverAssignedRoom: string | null = null;
         try {
+          let authToken: string | undefined;
+          try {
+            const { data: sessionData } = await supabase.auth.getSession();
+            authToken = sessionData.session?.access_token;
+          } catch {}
+
           const tokenRes = await fetch('/api/live/token', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+              'Content-Type': 'application/json',
+              ...(authToken ? { Authorization: `Bearer ${authToken}` } : {})
+            },
             body: JSON.stringify({
               sessionId,
-              roomName,
-              isModerator: isInstructor,
               userId,
-              userName: displayName,
-              userEmail,
-              userAvatarUrl
+              userEmail
             })
           });
 
-          if (tokenRes.ok) {
-            const tokenData = await tokenRes.json();
-            if (tokenData.success && tokenData.token) {
-              jwtToken = tokenData.token;
-            } else if (tokenData.configured === false) {
-              console.info('JaaS Token Notice:', tokenData.error);
+          const tokenData = await tokenRes.json();
+          if (tokenRes.status === 401 || tokenRes.status === 403) {
+            throw new Error(tokenData.error || 'Access denied: You are not authorized for this live class.');
+          }
+
+          if (tokenData.success && tokenData.token) {
+            jwtToken = tokenData.token;
+            if (tokenData.roomName) {
+              serverAssignedRoom = tokenData.roomName;
             }
           }
-        } catch (tokenErr) {
-          console.warn('Could not contact /api/live/token, proceeding with direct room:', tokenErr);
+        } catch (tokenErr: any) {
+          if (
+            tokenErr.message?.includes('Access denied') ||
+            tokenErr.message?.includes('Forbidden') ||
+            tokenErr.message?.includes('Unauthorized') ||
+            tokenErr.message?.includes('expired') ||
+            tokenErr.message?.includes('ended')
+          ) {
+            throw tokenErr;
+          }
+          console.warn('JaaS token request notice:', tokenErr.message);
         }
 
         // 2. Ensure external_api.js script is loaded from configured domain
@@ -134,10 +153,10 @@ const JitsiClassroom: React.FC<JitsiClassroomProps> = ({
         }
         containerRef.current.innerHTML = '';
 
-        // In 8x8 JaaS, both instructor and students must use: <appId>/<roomName>
-        const effectiveRoom = jaasAppId && !roomName.startsWith(`${jaasAppId}/`)
+        // In 8x8 JaaS, both instructor and students must use: <appId>/<approvedRoomName>
+        const effectiveRoom = serverAssignedRoom || (jaasAppId && !roomName.startsWith(`${jaasAppId}/`)
           ? `${jaasAppId}/${roomName}`
-          : roomName;
+          : roomName);
 
         const JitsiMeetExternalAPI = (window as any).JitsiMeetExternalAPI;
         if (!JitsiMeetExternalAPI) {

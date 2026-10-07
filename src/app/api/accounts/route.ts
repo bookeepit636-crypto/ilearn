@@ -8,7 +8,7 @@ declare global {
   var __registeredAccountsStore: UserAccount[] | undefined;
 }
 
-function getAccountsStore(): UserAccount[] {
+export function getAccountsStore(): UserAccount[] {
   if (!globalThis.__registeredAccountsStore) {
     globalThis.__registeredAccountsStore = [];
   }

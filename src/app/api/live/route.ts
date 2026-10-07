@@ -12,7 +12,7 @@ function isTerminal(status?: LiveSessionStatus): boolean {
   return status === 'completed' || status === 'cancelled';
 }
 
-function getStore(): LiveSession[] {
+export function getStore(): LiveSession[] {
   if (!globalThis.__liveSessionsStore) {
     globalThis.__liveSessionsStore = [];
   }
