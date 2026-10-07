@@ -155,17 +155,27 @@ CREATE TABLE IF NOT EXISTS public.live_sessions (
   course_id TEXT REFERENCES public.courses(id) ON DELETE SET NULL,
   course_title TEXT,
   instructor_id UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
+  created_by TEXT,
   instructor_name TEXT NOT NULL,
   date TEXT NOT NULL,
   start_time TEXT NOT NULL,
   end_time TEXT,
-  duration_minutes INT DEFAULT 60,
+  duration_minutes INT DEFAULT 60, -- 40 or 60
+  started_at TIMESTAMPTZ,
+  end_at TIMESTAMPTZ,
+  ended_at TIMESTAMPTZ,
   room_name TEXT NOT NULL UNIQUE,
   status TEXT NOT NULL DEFAULT 'scheduled', -- 'scheduled', 'live', 'completed', 'cancelled'
   attendees_count INT DEFAULT 0,
   recording_url TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Idempotent column additions for existing live_sessions tables
+ALTER TABLE public.live_sessions ADD COLUMN IF NOT EXISTS started_at TIMESTAMPTZ;
+ALTER TABLE public.live_sessions ADD COLUMN IF NOT EXISTS end_at TIMESTAMPTZ;
+ALTER TABLE public.live_sessions ADD COLUMN IF NOT EXISTS ended_at TIMESTAMPTZ;
+ALTER TABLE public.live_sessions ADD COLUMN IF NOT EXISTS created_by TEXT;
 
 -- 9. LIVE ATTENDANCE TABLE
 CREATE TABLE IF NOT EXISTS public.live_attendance (

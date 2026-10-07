@@ -38,6 +38,7 @@ import {
   fetchLiveSessionsFromSupabase,
   saveLiveSessionToSupabase,
   deleteLiveSessionFromSupabase,
+  subscribeToLiveSessionsRealtime,
   fetchAccountsFromApi,
   saveAccountToApi
 } from '@/lib/supabase';
@@ -424,12 +425,41 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         syncCloudLiveSessions();
       }
     };
-    window.addEventListener('focus', handleFocus);
-    document.addEventListener('visibilitychange', handleVisibility);
+    // 5. Supabase Realtime subscription for instant cross-client sync
+    const unsubRealtime = subscribeToLiveSessionsRealtime(
+      (incomingSession) => {
+        if (!isMounted || isMockLiveSession(incomingSession)) return;
+        setLiveSessions((prevSessions) => {
+          const map = new Map<string, LiveSession>();
+          prevSessions.filter((s) => !isMockLiveSession(s)).forEach((s) => map.set(s.id, s));
+          const existing = map.get(incomingSession.id);
+          if (existing) {
+            if (isTerminalStatus(existing.status) && !isTerminalStatus(incomingSession.status)) {
+              map.set(incomingSession.id, {
+                ...incomingSession,
+                status: existing.status,
+                endedAt: existing.endedAt || incomingSession.endedAt,
+                endTime: existing.endTime || incomingSession.endTime
+              });
+            } else {
+              map.set(incomingSession.id, { ...existing, ...incomingSession });
+            }
+          } else {
+            map.set(incomingSession.id, incomingSession);
+          }
+          return Array.from(map.values());
+        });
+      },
+      (deletedId) => {
+        if (!isMounted) return;
+        setLiveSessions((prev) => prev.filter((s) => s.id !== deletedId));
+      }
+    );
 
     return () => {
       isMounted = false;
       channel?.close();
+      unsubRealtime();
       window.removeEventListener('storage', handleStorage);
       clearInterval(pollInterval);
       window.removeEventListener('focus', handleFocus);
@@ -879,14 +909,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Live Session CRUD
   const addLiveSession = (session: Omit<LiveSession, 'id' | 'createdAt' | 'attendeesCount'> & { id?: string }): LiveSession => {
     const now = new Date();
+    const duration = (session.durationMinutes === 40 || session.durationMinutes === 60) ? session.durationMinutes : 60;
     const nowTime = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
     const nowDate = now.toISOString().split('T')[0];
+
+    const startedAt = session.startedAt || (session.status === 'live' ? now.toISOString() : undefined);
+    const endAt = session.endAt || (session.status === 'live' ? new Date(now.getTime() + duration * 60000).toISOString() : undefined);
+    const calculatedEndTime = endAt ? new Date(endAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) : session.endTime;
 
     const newSession: LiveSession = {
       ...session,
       id: session.id || `ls-${Date.now()}`,
+      durationMinutes: duration,
+      startedAt,
+      endAt,
+      createdBy: session.createdBy || session.instructorId || user.id,
       date: session.date || nowDate,
       startTime: session.status === 'live' && !session.startTime ? nowTime : (session.startTime || nowTime),
+      endTime: calculatedEndTime || session.endTime,
       attendeesCount: session.participants ? session.participants.length : 0,
       participants: session.participants || [],
       createdAt: new Date().toISOString()
@@ -920,7 +960,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const updateLiveSession = (id: string, updates: Partial<LiveSession>) => {
     const isTerminalStatus = (status?: LiveSessionStatus) => status === 'completed' || status === 'cancelled';
-    const nowTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+    const now = new Date();
+    const nowTime = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
 
     let updatedSession: LiveSession | null = null;
     setLiveSessions((prev) =>
@@ -932,16 +973,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             return s;
           }
 
-          // Auto-record actual start time when starting live session
+          const duration = (updates.durationMinutes === 40 || updates.durationMinutes === 60)
+            ? updates.durationMinutes
+            : (s.durationMinutes === 40 || s.durationMinutes === 60 ? s.durationMinutes : 60);
+
+          // Authoritative start and end times when transitioning to live
+          let finalStartedAt = updates.startedAt || s.startedAt;
+          let finalEndAt = updates.endAt || s.endAt;
           let finalStartTime = updates.startTime || s.startTime;
-          if (updates.status === 'live' && !updates.startTime && s.status !== 'live') {
+          let finalEndTime = updates.endTime || s.endTime;
+          let finalEndedAt = updates.endedAt || s.endedAt;
+
+          if (updates.status === 'live' && s.status !== 'live') {
+            finalStartedAt = now.toISOString();
+            finalEndAt = new Date(now.getTime() + duration * 60000).toISOString();
             finalStartTime = nowTime;
+            finalEndTime = new Date(now.getTime() + duration * 60000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
           }
 
-          // Auto-record actual end time when ending live session
-          let finalEndTime = updates.endTime || s.endTime;
-          if (updates.status === 'completed' && !updates.endTime) {
-            finalEndTime = nowTime;
+          // Authoritative end time when transitioning to completed
+          if (updates.status === 'completed') {
+            finalEndedAt = updates.endedAt || s.endedAt || now.toISOString();
+            if (!finalEndTime) {
+              finalEndTime = nowTime;
+            }
           }
 
           const participantsList = updates.participants || s.participants || [];
@@ -950,6 +1005,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           updatedSession = {
             ...s,
             ...updates,
+            durationMinutes: duration,
+            startedAt: finalStartedAt,
+            endAt: finalEndAt,
+            endedAt: finalEndedAt,
             startTime: finalStartTime,
             endTime: finalEndTime,
             participants: participantsList,

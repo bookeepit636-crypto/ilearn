@@ -3,6 +3,7 @@
 import dynamic from 'next/dynamic';
 import React, { useRef } from 'react';
 import type { IJitsiMeetingProps } from '@jitsi/react-sdk/lib/types';
+import { AlertCircle } from 'lucide-react';
 
 // Dynamically import with ssr: false since Jitsi uses browser-only window APIs
 const JitsiMeeting = dynamic(
@@ -48,6 +49,18 @@ const JitsiClassroom: React.FC<JitsiClassroomProps> = ({
   onParticipantCountChanged
 }) => {
   const apiRef = useRef<any>(null);
+
+  // Configurable conference domain via NEXT_PUBLIC_JITSI_DOMAIN / NEXT_PUBLIC_JAAS_APP_ID
+  const configuredDomain = process.env.NEXT_PUBLIC_JITSI_DOMAIN?.trim();
+  const jaasAppId = process.env.NEXT_PUBLIC_JAAS_APP_ID?.trim();
+  const jitsiDomain = configuredDomain || (jaasAppId ? '8x8.vc' : 'meet.jit.si');
+  const isPublicMeetJitsi = jitsiDomain === 'meet.jit.si' && !jaasAppId;
+
+  // In 8x8 JaaS, room names must be prefixed by the tenant App ID: <AppId>/<roomName>
+  const effectiveRoomName =
+    jaasAppId && !roomName.startsWith(`${jaasAppId}/`)
+      ? `${jaasAppId}/${roomName}`
+      : roomName;
 
   const handleApiReady = (api: any) => {
     apiRef.current = api;
@@ -96,8 +109,6 @@ const JitsiClassroom: React.FC<JitsiClassroomProps> = ({
     disableDeepLinking: true,
     enableNoisyMicDetection: true,
     prejoinPageEnabled: false,
-    // Modern Jitsi Web configuration to skip the nested secondary join prompt
-    // and proceed directly to video tiles like Google Meet
     prejoinConfig: {
       enabled: false
     },
@@ -120,7 +131,6 @@ const JitsiClassroom: React.FC<JitsiClassroomProps> = ({
       'shortcuts',
       'mute-everyone',
     ],
-    // Subject shown in the meeting header
     subject: sessionTitle || 'BookKeep-It Live Class',
     requireDisplayName: true,
   };
@@ -135,26 +145,40 @@ const JitsiClassroom: React.FC<JitsiClassroomProps> = ({
   };
 
   return (
-    <div className="w-full h-full flex-1 min-h-0 flex flex-col bg-slate-950">
-      <JitsiMeeting
-        domain="meet.jit.si"
-        roomName={roomName}
-        configOverwrite={configOverwrite}
-        interfaceConfigOverwrite={interfaceConfigOverwrite}
-        userInfo={{
-          displayName,
-          email: userEmail || ''
-        }}
-        onApiReady={handleApiReady}
-        getIFrameRef={(node) => {
-          if (node) {
-            node.style.width = '100%';
-            node.style.height = '100%';
-            node.style.flex = '1';
-            node.style.border = 'none';
-          }
-        }}
-      />
+    <div className="w-full h-full flex-1 min-h-0 flex flex-col bg-slate-950 relative">
+      {/* Informative warning banner when using public meet.jit.si for transparency */}
+      {isInstructor && isPublicMeetJitsi && (
+        <div className="bg-amber-950/90 border-b border-amber-600/40 px-3 py-1.5 text-[11px] text-amber-200 flex items-center justify-between gap-2 shrink-0 z-20">
+          <div className="flex items-center gap-1.5 truncate">
+            <AlertCircle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+            <span className="truncate">
+              <strong>Notice:</strong> Conference is using public <code className="bg-black/30 px-1 py-0.5 rounded">meet.jit.si</code> (has ~5m embedded demo restriction). Set <code className="bg-black/30 px-1 py-0.5 rounded">NEXT_PUBLIC_JITSI_DOMAIN</code> for custom production Jitsi/JaaS.
+            </span>
+          </div>
+        </div>
+      )}
+
+      <div className="w-full h-full flex-1 min-h-0">
+        <JitsiMeeting
+          domain={jitsiDomain}
+          roomName={effectiveRoomName}
+          configOverwrite={configOverwrite}
+          interfaceConfigOverwrite={interfaceConfigOverwrite}
+          userInfo={{
+            displayName,
+            email: userEmail || ''
+          }}
+          onApiReady={handleApiReady}
+          getIFrameRef={(node) => {
+            if (node) {
+              node.style.width = '100%';
+              node.style.height = '100%';
+              node.style.flex = '1';
+              node.style.border = 'none';
+            }
+          }}
+        />
+      </div>
     </div>
   );
 };

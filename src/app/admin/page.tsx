@@ -1628,10 +1628,7 @@ function LiveClassesAdminPanel({
   const [lsTitle, setLsTitle] = useState('');
   const [lsDesc, setLsDesc] = useState('');
   const [lsCourseId, setLsCourseId] = useState('');
-  const [lsDate, setLsDate] = useState('');
-  const [lsStart, setLsStart] = useState('');
-  const [lsEnd, setLsEnd] = useState('');
-  const [lsDuration, setLsDuration] = useState(60);
+  const [lsDuration, setLsDuration] = useState<40 | 60>(60); // 60 minutes default
   const [expandedRosterId, setExpandedRosterId] = useState<string | null>(null);
 
   // Real registered students from the system (zero mock data)
@@ -1644,26 +1641,23 @@ function LiveClassesAdminPanel({
     cancelled: 'bg-slate-100 text-slate-500'
   };
 
-  const handleCreate = (startNow = false) => {
+  const handleStartLiveClass = () => {
     if (!lsTitle.trim()) {
       alert('Please enter a session title');
       return;
     }
 
     const now = new Date();
+    const duration = lsDuration === 40 ? 40 : 60;
+    const startedAt = now.toISOString();
+    const endAt = new Date(now.getTime() + duration * 60000).toISOString();
     const actualDate = now.toISOString().split('T')[0];
     const actualStartTime = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
-    const endMinutes = new Date(now.getTime() + (lsDuration || 60) * 60000);
-    const actualEndTime = endMinutes.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
-
-    // For instant meeting: auto-generate date and actual start time from current timestamp
-    const dateToUse = startNow ? actualDate : (lsDate || actualDate);
-    const startTimeToUse = startNow ? actualStartTime : (lsStart || actualStartTime);
-    const endTimeToUse = startNow ? actualEndTime : (lsEnd || actualEndTime);
+    const actualEndTime = new Date(now.getTime() + duration * 60000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
 
     const selectedCourse = courses.find((c) => c.id === lsCourseId);
     const generatedId = `ls-${Date.now()}`;
-    const roomId = `bookkeep-it-${lsTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 40)}-${Date.now()}`;
+    const roomId = `bookkeep-it-${lsTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 35)}-${Date.now()}`;
 
     const created = addLiveSession({
       id: generatedId,
@@ -1673,40 +1667,80 @@ function LiveClassesAdminPanel({
       courseTitle: selectedCourse?.title,
       instructorName: user.name,
       instructorId: user.id,
-      date: dateToUse,
-      startTime: startTimeToUse,
-      endTime: endTimeToUse,
-      durationMinutes: lsDuration,
+      createdBy: user.id || user.email,
+      date: actualDate,
+      startTime: actualStartTime,
+      endTime: actualEndTime,
+      durationMinutes: duration,
+      startedAt,
+      endAt,
       meetingRoomId: roomId,
-      status: startNow ? 'live' : 'scheduled',
+      status: 'live',
       participants: []
     });
 
     setLsTitle('');
     setLsDesc('');
     setLsCourseId('');
-    setLsDate('');
-    setLsStart('');
-    setLsEnd('');
+    setLsDuration(60);
 
-    if (startNow) {
-      // Direct Google Meet / Zoom style navigation straight into the video meeting
-      router.push(`/live/${created.id}`);
-    } else {
-      alert('Live class scheduled successfully! It is now visible on student dashboards and the Live Classes page.');
-    }
+    // Direct navigation straight into video meeting
+    router.push(`/live/${created.id}`);
+  };
+
+  const handleStartNewSessionFromPrevious = (prevSession: LiveSession) => {
+    const now = new Date();
+    const duration = 60;
+    const startedAt = now.toISOString();
+    const endAt = new Date(now.getTime() + duration * 60000).toISOString();
+    const actualDate = now.toISOString().split('T')[0];
+    const actualStartTime = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+    const actualEndTime = new Date(now.getTime() + duration * 60000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+
+    const newId = `ls-${Date.now()}`;
+    const baseTitle = prevSession.title.replace(/\s*\(Part\s*\d+\)$/i, '');
+    const newTitle = `${baseTitle} (Part 2)`;
+    const newRoom = `bookkeep-it-${newTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 35)}-${Date.now()}`;
+
+    const created = addLiveSession({
+      id: newId,
+      title: newTitle,
+      description: prevSession.description,
+      courseId: prevSession.courseId,
+      courseTitle: prevSession.courseTitle,
+      instructorName: user.name,
+      instructorId: user.id,
+      createdBy: user.id || user.email,
+      date: actualDate,
+      startTime: actualStartTime,
+      endTime: actualEndTime,
+      durationMinutes: duration,
+      startedAt,
+      endAt,
+      meetingRoomId: newRoom,
+      status: 'live',
+      participants: []
+    });
+
+    router.push(`/live/${created.id}`);
   };
 
   return (
     <div className="space-y-6">
       {/* Create New Session */}
       <div className="card-theme p-6 rounded-3xl bg-white border border-slate-100 space-y-4">
-        <h3 className="text-base font-bold text-slate-800 flex items-center gap-2 border-b border-slate-100 pb-2">
-          <Plus className="w-4 h-4 text-indigo-600" />
-          Create or Schedule Live Class
-        </h3>
-        <form onSubmit={(e) => { e.preventDefault(); handleCreate(false); }} className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-          <div className="md:col-span-2">
+        <div className="border-b border-slate-100 pb-2">
+          <h3 className="text-base font-bold text-slate-800 flex items-center gap-2">
+            <Radio className="w-4 h-4 text-red-500 animate-pulse" />
+            Start Live Class
+          </h3>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Select duration and click Start. Authoritative start time and end time are automatically calculated.
+          </p>
+        </div>
+
+        <form onSubmit={(e) => { e.preventDefault(); handleStartLiveClass(); }} className="space-y-4 text-xs">
+          <div>
             <label className="block text-slate-700 font-semibold mb-1">
               Session Title <span className="text-red-500">*</span>
             </label>
@@ -1716,11 +1750,11 @@ function LiveClassesAdminPanel({
               value={lsTitle}
               onChange={(e) => setLsTitle(e.target.value)}
               placeholder="e.g. Trial Balance Adjustments – Live Review"
-              className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-800 focus:outline-none focus:border-indigo-600"
+              className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 text-slate-800 focus:outline-none focus:border-[#0077b6] text-xs font-medium"
             />
           </div>
 
-          <div className="md:col-span-2">
+          <div>
             <label className="block text-slate-700 font-semibold mb-1">
               Description <span className="text-slate-400 font-normal">(optional)</span>
             </label>
@@ -1728,95 +1762,71 @@ function LiveClassesAdminPanel({
               rows={2}
               value={lsDesc}
               onChange={(e) => setLsDesc(e.target.value)}
-              placeholder="Brief agenda or topic for this live session (optional)..."
-              className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-800 focus:outline-none focus:border-indigo-600 resize-none"
+              placeholder="Brief agenda or discussion topics for this class..."
+              className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-800 focus:outline-none focus:border-[#0077b6] resize-none text-xs font-medium"
             />
           </div>
 
-          <div>
-            <label className="block text-slate-700 font-semibold mb-1">
-              Link to Course <span className="text-slate-400 font-normal">(optional)</span>
-            </label>
-            <select
-              value={lsCourseId}
-              onChange={(e) => setLsCourseId(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-800 focus:outline-none focus:border-indigo-600"
-            >
-              <option value="">-- No specific course (Open to all students) --</option>
-              {courses.map((c) => (
-                <option key={c.id} value={c.id}>{c.title}</option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-slate-700 font-semibold mb-1">Duration (minutes)</label>
-            <input
-              type="number"
-              min={15}
-              max={240}
-              value={lsDuration}
-              onChange={(e) => setLsDuration(Number(e.target.value))}
-              className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-800 focus:outline-none focus:border-indigo-600"
-            />
-          </div>
-
-          {/* Scheduled Date & Time - Optional for instant live meetings */}
-          <div>
-            <label className="block text-slate-700 font-semibold mb-1">
-              Scheduled Date <span className="text-slate-400 font-normal">(auto-filled if starting now)</span>
-            </label>
-            <input
-              type="date"
-              value={lsDate}
-              onChange={(e) => setLsDate(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-800 focus:outline-none focus:border-indigo-600"
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-slate-700 font-semibold mb-1">
-                Start Time <span className="text-slate-400 font-normal">(auto-recorded if now)</span>
+                Link to Course <span className="text-slate-400 font-normal">(optional)</span>
               </label>
-              <input
-                type="time"
-                value={lsStart}
-                onChange={(e) => setLsStart(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-800 focus:outline-none focus:border-indigo-600"
-              />
+              <select
+                value={lsCourseId}
+                onChange={(e) => setLsCourseId(e.target.value)}
+                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 text-slate-800 focus:outline-none focus:border-[#0077b6] text-xs font-medium"
+              >
+                <option value="">-- Open to all students --</option>
+                {courses.map((c) => (
+                  <option key={c.id} value={c.id}>{c.title}</option>
+                ))}
+              </select>
             </div>
+
+            {/* SIMPLIFIED DURATION SELECTOR: ONLY 40m OR 60m */}
             <div>
               <label className="block text-slate-700 font-semibold mb-1">
-                End Time <span className="text-slate-400 font-normal">(optional)</span>
+                Session Duration Choice <span className="text-red-500">*</span>
               </label>
-              <input
-                type="time"
-                value={lsEnd}
-                onChange={(e) => setLsEnd(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-800 focus:outline-none focus:border-indigo-600"
-              />
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setLsDuration(60)}
+                  className={`py-2 px-3 rounded-xl border text-xs font-bold transition flex flex-col items-center justify-center cursor-pointer ${
+                    lsDuration === 60
+                      ? 'bg-[#0077b6] text-white border-[#0077b6] shadow-sm'
+                      : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                  }`}
+                >
+                  <span className="text-xs">60 Minutes</span>
+                  <span className={`text-[10px] ${lsDuration === 60 ? 'text-cyan-200' : 'text-slate-500'}`}>Default</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setLsDuration(40)}
+                  className={`py-2 px-3 rounded-xl border text-xs font-bold transition flex flex-col items-center justify-center cursor-pointer ${
+                    lsDuration === 40
+                      ? 'bg-[#0077b6] text-white border-[#0077b6] shadow-sm'
+                      : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                  }`}
+                >
+                  <span className="text-xs">40 Minutes</span>
+                  <span className={`text-[10px] ${lsDuration === 40 ? 'text-cyan-200' : 'text-slate-500'}`}>Express</span>
+                </button>
+              </div>
             </div>
           </div>
 
-          <div className="md:col-span-2 flex flex-col sm:flex-row justify-end gap-3 pt-2">
+          <div className="pt-2 flex justify-end">
             <button
-              type="button"
+              type="submit"
               id="admin-start-instant-live-btn"
-              onClick={() => handleCreate(true)}
-              className="px-6 py-2.5 rounded-full bg-gradient-to-r from-red-500 to-rose-600 hover:from-red-600 hover:to-rose-700 text-white font-extrabold text-xs flex items-center justify-center gap-2 shadow-md shadow-red-500/25 transition active:scale-95"
+              className="w-full sm:w-auto px-8 py-3 rounded-full bg-gradient-to-r from-red-500 to-rose-600 hover:from-red-600 hover:to-rose-700 text-white font-extrabold text-xs flex items-center justify-center gap-2 shadow-lg shadow-red-500/25 transition active:scale-95 cursor-pointer"
             >
               <Radio className="w-4 h-4 animate-pulse" />
-              Start Instant Meeting Now (Direct to Video)
-            </button>
-            <button
-              type="button"
-              id="admin-schedule-later-btn"
-              onClick={() => handleCreate(false)}
-              className="px-6 py-2.5 rounded-full bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-md transition active:scale-95"
-            >
-              <Clock className="w-4 h-4" />
-              Schedule for Later
+              <span>Start Live Class ({lsDuration} Minutes)</span>
             </button>
           </div>
         </form>
@@ -1836,13 +1846,13 @@ function LiveClassesAdminPanel({
         <div className="space-y-4">
           {liveSessions.length === 0 && (
             <p className="text-xs text-slate-400 text-center py-8">
-              No live sessions yet. Schedule or start your first live class above.
+              No live sessions yet. Start your first live class above.
             </p>
           )}
 
           {liveSessions.map((session) => {
             const isRosterExpanded = expandedRosterId === session.id;
-            const participantsCount = session.participants?.length || session.attendeesCount || 0;
+            const participantsCount = session.participants?.length ?? (session.attendeesCount ?? 0);
 
             return (
               <div
@@ -1854,6 +1864,9 @@ function LiveClassesAdminPanel({
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className={`text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-full ${statusPill[session.status]}`}>
                         {session.status === 'live' ? '🔴 Live Now' : session.status}
+                      </span>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-200/80 text-slate-700">
+                        {session.durationMinutes} mins
                       </span>
                       {session.courseTitle && (
                         <span className="text-[10px] text-[#0077b6] font-bold">
@@ -1875,37 +1888,13 @@ function LiveClassesAdminPanel({
                   </div>
 
                   <div className="flex items-center gap-2 shrink-0 flex-wrap">
-                    {/* SCHEDULED: Go Live & Enter OR Cancel */}
-                    {session.status === 'scheduled' && (
-                      <>
-                        <button
-                          id={`go-live-btn-${session.id}`}
-                          onClick={() => {
-                            const actualStart = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
-                            updateLiveSession(session.id, { status: 'live', startTime: actualStart });
-                            router.push(`/live/${session.id}`);
-                          }}
-                          className="px-3 py-1.5 rounded-full bg-red-500 hover:bg-red-600 text-white font-bold text-[11px] flex items-center gap-1 shadow-sm transition active:scale-95"
-                        >
-                          <Radio className="w-3 h-3" /> Go Live & Enter
-                        </button>
-                        <button
-                          id={`cancel-schedule-btn-${session.id}`}
-                          onClick={() => updateLiveSession(session.id, { status: 'cancelled' })}
-                          className="px-3 py-1.5 rounded-full bg-amber-100 text-amber-700 font-bold text-[11px] flex items-center gap-1 transition hover:bg-amber-200 active:scale-95"
-                        >
-                          <XCircle className="w-3 h-3" /> Cancel Schedule
-                        </button>
-                      </>
-                    )}
-
-                    {/* LIVE NOW: Enter Room OR End Session */}
+                    {/* LIVE NOW: Enter Room OR End for All */}
                     {session.status === 'live' && (
                       <>
                         <button
                           id={`enter-room-btn-${session.id}`}
                           onClick={() => router.push(`/live/${session.id}`)}
-                          className="px-3 py-1.5 rounded-full bg-green-600 hover:bg-green-700 text-white font-bold text-[11px] flex items-center gap-1 shadow-sm transition active:scale-95"
+                          className="px-3.5 py-1.5 rounded-full bg-green-600 hover:bg-green-700 text-white font-bold text-[11px] flex items-center gap-1 shadow-sm transition active:scale-95 cursor-pointer"
                         >
                           <Radio className="w-3 h-3" /> Enter Room
                         </button>
@@ -1913,23 +1902,31 @@ function LiveClassesAdminPanel({
                           id={`end-session-btn-${session.id}`}
                           onClick={() => {
                             const actualEnd = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
-                            updateLiveSession(session.id, { status: 'completed', endTime: actualEnd });
+                            updateLiveSession(session.id, { status: 'completed', endTime: actualEnd, endedAt: new Date().toISOString() });
                           }}
-                          className="px-3 py-1.5 rounded-full bg-slate-700 hover:bg-slate-800 text-white font-bold text-[11px] flex items-center gap-1 transition active:scale-95"
+                          className="px-3.5 py-1.5 rounded-full bg-red-600 hover:bg-red-700 text-white font-bold text-[11px] flex items-center gap-1 shadow-sm transition active:scale-95 cursor-pointer"
                         >
-                          <CheckCircle2 className="w-3 h-3" /> End Session
+                          <XCircle className="w-3 h-3" /> End for All
                         </button>
                       </>
                     )}
 
-                    {/* COMPLETED: Permanent badge, NO active controls */}
+                    {/* COMPLETED: Permanent badge + Start New Session button */}
                     {session.status === 'completed' && (
-                      <span className="text-[11px] font-bold text-emerald-700 bg-emerald-100/70 px-3 py-1 rounded-full border border-emerald-200 flex items-center gap-1">
-                        <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Session Completed
-                      </span>
+                      <>
+                        <span className="text-[11px] font-bold text-emerald-700 bg-emerald-100/70 px-3 py-1 rounded-full border border-emerald-200 flex items-center gap-1">
+                          <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Session Completed
+                        </span>
+                        <button
+                          onClick={() => handleStartNewSessionFromPrevious(session)}
+                          className="px-3.5 py-1.5 rounded-full bg-[#0077b6] hover:bg-[#023e8a] text-white font-bold text-[11px] flex items-center gap-1 shadow-sm transition active:scale-95 cursor-pointer"
+                        >
+                          <Plus className="w-3 h-3" /> Start New Session
+                        </button>
+                      </>
                     )}
 
-                    {/* CANCELLED: Permanent badge, NO active controls */}
+                    {/* CANCELLED: Permanent badge */}
                     {session.status === 'cancelled' && (
                       <span className="text-[11px] font-bold text-slate-500 bg-slate-200/70 px-3 py-1 rounded-full border border-slate-300 flex items-center gap-1">
                         <XCircle className="w-3 h-3 text-slate-400" /> Cancelled
@@ -1942,7 +1939,7 @@ function LiveClassesAdminPanel({
                       onClick={() => {
                         if (confirm(`Delete "${session.title}"?`)) deleteLiveSession(session.id);
                       }}
-                      className="p-1.5 rounded-full text-slate-400 hover:text-red-500 hover:bg-red-50 transition"
+                      className="p-1.5 rounded-full text-slate-400 hover:text-red-500 hover:bg-red-50 transition cursor-pointer"
                       title="Delete Session"
                     >
                       <Trash2 className="w-4 h-4" />

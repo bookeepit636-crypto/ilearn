@@ -23,12 +23,40 @@ function setStore(sessions: LiveSession[]) {
   globalThis.__liveSessionsStore = sessions;
 }
 
+// Auto-expire live sessions where authoritative end_at has been reached
+function checkAndAutoExpireSessions(sessions: LiveSession[]): { updated: LiveSession[]; changed: boolean } {
+  const nowMs = Date.now();
+  let changed = false;
+
+  const updated = sessions.map((s) => {
+    if (s.status === 'live' && s.endAt && nowMs >= new Date(s.endAt).getTime()) {
+      changed = true;
+      const endTimestamp = new Date(s.endAt);
+      return {
+        ...s,
+        status: 'completed' as LiveSessionStatus,
+        endedAt: s.endedAt || s.endAt,
+        endTime: s.endTime || endTimestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }),
+        updatedAt: new Date().toISOString()
+      };
+    }
+    return s;
+  });
+
+  return { updated, changed };
+}
+
 // GET /api/live - Returns all live sessions
 export async function GET() {
   try {
-    const sessions = getStore();
+    const rawSessions = getStore();
+    const { updated, changed } = checkAndAutoExpireSessions(rawSessions);
+    if (changed) {
+      setStore(updated);
+    }
+
     return NextResponse.json(
-      { success: true, sessions },
+      { success: true, sessions: updated },
       {
         headers: {
           'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
@@ -68,6 +96,23 @@ export async function POST(req: Request) {
       if (isTerminal(existing.status)) {
         return NextResponse.json(
           { success: false, error: 'Session has already ended or been cancelled', status: existing.status },
+          { status: 403 }
+        );
+      }
+
+      // Check if authoritative end_at has passed
+      if (existing.endAt && Date.now() >= new Date(existing.endAt).getTime()) {
+        const expiredSession: LiveSession = {
+          ...existing,
+          status: 'completed',
+          endedAt: existing.endedAt || existing.endAt,
+          updatedAt: new Date().toISOString()
+        };
+        const updatedStore = current.map((s) => (s.id === sessionId ? expiredSession : s));
+        setStore(updatedStore);
+
+        return NextResponse.json(
+          { success: false, error: 'Session duration has expired', status: 'completed' },
           { status: 403 }
         );
       }
@@ -151,6 +196,31 @@ export async function POST(req: Request) {
     const current = getStore();
     const index = current.findIndex((s) => s.id === session.id);
 
+    // Duration is strictly 40 or 60 (default to 60)
+    const duration = session.durationMinutes === 40 || session.durationMinutes === 60 ? session.durationMinutes : 60;
+    const now = new Date();
+
+    let startedAt = session.startedAt;
+    let endAt = session.endAt;
+    let endedAt = session.endedAt;
+
+    if (session.status === 'live') {
+      if (!startedAt) {
+        startedAt = now.toISOString();
+      }
+      if (!endAt) {
+        endAt = new Date(new Date(startedAt).getTime() + duration * 60000).toISOString();
+      }
+    } else if (session.status === 'completed') {
+      if (!endedAt) {
+        endedAt = now.toISOString();
+      }
+    }
+
+    const actualDate = session.date || (startedAt ? new Date(startedAt).toISOString().split('T')[0] : now.toISOString().split('T')[0]);
+    const actualStartTime = session.startTime || (startedAt ? new Date(startedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) : now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }));
+    const actualEndTime = session.endTime || (endAt ? new Date(endAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) : undefined);
+
     let updated: LiveSession[];
     if (index >= 0) {
       const existing = current[index];
@@ -163,6 +233,13 @@ export async function POST(req: Request) {
       const mergedSession: LiveSession = {
         ...existing,
         ...session,
+        durationMinutes: duration,
+        startedAt: existing.startedAt || startedAt,
+        endAt: existing.endAt || endAt,
+        endedAt: session.status === 'completed' ? (session.endedAt || endedAt || new Date().toISOString()) : existing.endedAt,
+        date: session.date || existing.date,
+        startTime: session.startTime || existing.startTime,
+        endTime: session.endTime || existing.endTime,
         status: resolvedStatus,
         participants: session.participants || existing.participants || [],
         attendeesCount: (session.participants || existing.participants || []).length,
@@ -170,10 +247,15 @@ export async function POST(req: Request) {
       };
       updated = current.map((s) => (s.id === session.id ? mergedSession : s));
     } else {
-      const nowStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
       const initialSession: LiveSession = {
         ...session,
-        startTime: session.status === 'live' && !session.startTime ? nowStr : session.startTime,
+        durationMinutes: duration,
+        startedAt,
+        endAt,
+        endedAt,
+        date: actualDate,
+        startTime: actualStartTime,
+        endTime: actualEndTime,
         participants: session.participants || [],
         attendeesCount: (session.participants || []).length,
         createdAt: session.createdAt || new Date().toISOString()
@@ -218,18 +300,30 @@ export async function PUT(req: Request) {
       );
     }
 
-    const nowTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+    const now = new Date();
+    const nowTime = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+    const duration = updates.durationMinutes || existing.durationMinutes || 60;
 
-    // Auto-record actual start time if transitioning to live
+    // Auto-record authoritative start time and calculate end_at if transitioning to live
+    let finalStartedAt = updates.startedAt || existing.startedAt;
+    let finalEndAt = updates.endAt || existing.endAt;
     let finalStartTime = updates.startTime || existing.startTime;
-    if (updates.status === 'live' && !updates.startTime && existing.status !== 'live') {
+    let finalEndTime = updates.endTime || existing.endTime;
+    let finalEndedAt = updates.endedAt || existing.endedAt;
+
+    if (updates.status === 'live' && existing.status !== 'live') {
+      finalStartedAt = now.toISOString();
+      finalEndAt = new Date(now.getTime() + duration * 60000).toISOString();
       finalStartTime = nowTime;
+      finalEndTime = new Date(now.getTime() + duration * 60000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
     }
 
     // Auto-record actual end time if transitioning to completed
-    let finalEndTime = updates.endTime || existing.endTime;
-    if (updates.status === 'completed' && !updates.endTime) {
-      finalEndTime = nowTime;
+    if (updates.status === 'completed') {
+      finalEndedAt = now.toISOString();
+      if (!finalEndTime) {
+        finalEndTime = nowTime;
+      }
     }
 
     const updated = current.map((s) =>
@@ -237,6 +331,10 @@ export async function PUT(req: Request) {
         ? {
             ...s,
             ...updates,
+            durationMinutes: duration,
+            startedAt: finalStartedAt,
+            endAt: finalEndAt,
+            endedAt: finalEndedAt,
             startTime: finalStartTime,
             endTime: finalEndTime,
             updatedAt: new Date().toISOString()

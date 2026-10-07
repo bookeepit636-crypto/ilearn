@@ -40,12 +40,15 @@ const STATUS_CONFIG: Record<LiveSessionStatus, { label: string; pill: string; do
 type FilterTab = 'all' | 'live' | 'scheduled' | 'completed';
 
 function SessionCard({ session }: { session: LiveSession }) {
-  const config = STATUS_CONFIG[session.status];
+  // Check if session has reached its authoritative end_at
+  const isExpired = session.status === 'live' && session.endAt && Date.now() >= new Date(session.endAt).getTime();
+  const effectiveStatus = isExpired ? 'completed' : session.status;
+  const config = STATUS_CONFIG[effectiveStatus];
 
   return (
     <div
       className={`card-theme p-5 rounded-3xl flex flex-col gap-4 ${
-        session.status === 'live' ? 'ring-2 ring-red-400 ring-offset-2 shadow-lg shadow-red-100' : ''
+        effectiveStatus === 'live' ? 'ring-2 ring-red-400 ring-offset-2 shadow-lg shadow-red-100' : ''
       }`}
     >
       {/* Header */}
@@ -56,10 +59,13 @@ function SessionCard({ session }: { session: LiveSession }) {
             <span
               className={`inline-flex items-center gap-1.5 text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-full ${config.pill}`}
             >
-              {session.status === 'live' && (
+              {effectiveStatus === 'live' && (
                 <span className={`w-1.5 h-1.5 rounded-full ${config.dot} animate-pulse`} />
               )}
               {config.label}
+            </span>
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
+              {session.durationMinutes || 60}m
             </span>
             {/* Course badge */}
             {session.courseTitle && (
@@ -76,11 +82,11 @@ function SessionCard({ session }: { session: LiveSession }) {
         {/* Video icon accent */}
         <div
           className={`shrink-0 w-10 h-10 rounded-2xl flex items-center justify-center ${
-            session.status === 'live' ? 'bg-red-50' : 'bg-cyan-50'
+            effectiveStatus === 'live' ? 'bg-red-50' : 'bg-cyan-50'
           }`}
         >
           <Video
-            className={`w-5 h-5 ${session.status === 'live' ? 'text-red-500' : 'text-cyan-600'}`}
+            className={`w-5 h-5 ${effectiveStatus === 'live' ? 'text-red-500' : 'text-cyan-600'}`}
           />
         </div>
       </div>
@@ -99,7 +105,7 @@ function SessionCard({ session }: { session: LiveSession }) {
         {((session.participants?.length || session.attendeesCount || 0) > 0) && (
           <span className="flex items-center gap-1">
             <Users className="w-3.5 h-3.5" />
-            {session.participants?.length || session.attendeesCount} {session.status === 'live' ? 'in room' : 'attended'}
+            {session.participants?.length || session.attendeesCount} {effectiveStatus === 'live' ? 'in room' : 'attended'}
           </span>
         )}
       </div>
@@ -109,42 +115,45 @@ function SessionCard({ session }: { session: LiveSession }) {
         Instructor: <span className="text-[#0077b6] font-bold">{session.instructorName}</span>
       </div>
 
-      {/* CTA Buttons */}
+      {/* CTA Buttons - Join button is strictly REMOVED when completed or expired */}
       <div className="flex items-center gap-2 pt-1">
-        {session.status === 'live' && (
+        {effectiveStatus === 'live' && (
           <Link
             href={`/live/${session.id}`}
-            className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-full bg-red-500 hover:bg-red-600 text-white font-bold text-xs shadow-md shadow-red-200 transition"
+            className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-full bg-red-500 hover:bg-red-600 text-white font-bold text-xs shadow-md shadow-red-200 transition cursor-pointer"
           >
             <Radio className="w-4 h-4" />
             Join Live Class
           </Link>
         )}
-        {session.status === 'scheduled' && (
+        {effectiveStatus === 'scheduled' && (
           <Link
             href={`/live/${session.id}`}
-            className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-full bg-[#00b4d8] hover:bg-[#0077b6] text-white font-bold text-xs shadow-md shadow-cyan-200 transition"
+            className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-full bg-[#00b4d8] hover:bg-[#0077b6] text-white font-bold text-xs shadow-md shadow-cyan-200 transition cursor-pointer"
           >
             <Clock className="w-4 h-4" />
             View Details
           </Link>
         )}
-        {session.status === 'completed' && session.recordingUrl && (
+        {effectiveStatus === 'completed' && session.recordingUrl && (
           <Link
             href={`/live/${session.id}`}
-            className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-full bg-slate-700 hover:bg-slate-800 text-white font-bold text-xs transition"
+            className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-full bg-slate-700 hover:bg-slate-800 text-white font-bold text-xs transition cursor-pointer"
           >
             <Play className="w-4 h-4" />
             Watch Replay
           </Link>
         )}
-        {session.status === 'completed' && !session.recordingUrl && (
-          <span className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-full bg-slate-100 text-slate-500 font-bold text-xs">
-            <CheckCircle2 className="w-4 h-4" />
-            Session Ended
-          </span>
+        {effectiveStatus === 'completed' && !session.recordingUrl && (
+          <Link
+            href={`/live/${session.id}`}
+            className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold text-xs transition cursor-pointer"
+          >
+            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+            Session Completed
+          </Link>
         )}
-        {session.status === 'cancelled' && (
+        {effectiveStatus === 'cancelled' && (
           <span className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-full bg-slate-100 text-slate-400 font-bold text-xs">
             <XCircle className="w-4 h-4" />
             Cancelled
@@ -160,17 +169,30 @@ export default function LiveClassesPage() {
   const [activeTab, setActiveTab] = useState<FilterTab>('all');
 
   const cleanSessions = liveSessions.filter((s) => !isMockLiveSession(s));
-  const liveNow = cleanSessions.filter((s) => s.status === 'live');
+  const nowMs = Date.now();
+
+  // Active live sessions where end_at has not passed
+  const liveNow = cleanSessions.filter((s) => {
+    if (s.status !== 'live') return false;
+    if (s.endAt && nowMs >= new Date(s.endAt).getTime()) return false;
+    return true;
+  });
+
+  const getEffectiveStatus = (s: LiveSession) => {
+    if (s.status === 'live' && s.endAt && nowMs >= new Date(s.endAt).getTime()) return 'completed';
+    return s.status;
+  };
+
   const filtered =
     activeTab === 'all'
       ? cleanSessions
-      : cleanSessions.filter((s) => s.status === activeTab);
+      : cleanSessions.filter((s) => getEffectiveStatus(s) === activeTab);
 
   const tabs: { key: FilterTab; label: string; count: number }[] = [
     { key: 'all', label: 'All Sessions', count: cleanSessions.length },
     { key: 'live', label: '🔴 Live Now', count: liveNow.length },
-    { key: 'scheduled', label: 'Upcoming', count: cleanSessions.filter((s) => s.status === 'scheduled').length },
-    { key: 'completed', label: 'Past Replays', count: cleanSessions.filter((s) => s.status === 'completed').length }
+    { key: 'scheduled', label: 'Upcoming', count: cleanSessions.filter((s) => getEffectiveStatus(s) === 'scheduled').length },
+    { key: 'completed', label: 'Completed History', count: cleanSessions.filter((s) => getEffectiveStatus(s) === 'completed').length }
   ];
 
   return (

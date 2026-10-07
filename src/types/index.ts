@@ -139,6 +139,7 @@ export interface FAQItem {
 // ==========================================
 
 export type LiveSessionStatus = 'scheduled' | 'live' | 'completed' | 'cancelled';
+export type LiveSessionDuration = 40 | 60;
 
 export interface LiveSession {
   id: string;
@@ -148,10 +149,14 @@ export interface LiveSession {
   courseTitle?: string;
   instructorName: string;
   instructorId?: string;
+  createdBy?: string;
   date: string;           // YYYY-MM-DD
   startTime: string;      // HH:mm
   endTime?: string;       // HH:mm
-  durationMinutes: number;
+  durationMinutes: number; // 40 or 60
+  startedAt?: string;     // ISO timestamp (authoritative server start)
+  endAt?: string;         // ISO timestamp (authoritative end = startedAt + duration)
+  endedAt?: string;       // ISO timestamp (actual completion time)
   meetingRoomId: string;  // Jitsi room name (unique, URL-safe)
   status: LiveSessionStatus;
   recordingUrl?: string;

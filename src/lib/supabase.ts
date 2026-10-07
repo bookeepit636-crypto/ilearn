@@ -197,11 +197,15 @@ export async function fetchLiveSessionsFromSupabase(): Promise<LiveSession[]> {
           courseId: row.course_id || undefined,
           courseTitle: row.course_title || undefined,
           instructorId: row.instructor_id || undefined,
+          createdBy: row.created_by || row.instructor_id || undefined,
           instructorName: row.instructor_name || 'Instructor',
           date: row.date,
           startTime: row.start_time,
           endTime: row.end_time || undefined,
           durationMinutes: row.duration_minutes || 60,
+          startedAt: row.started_at || undefined,
+          endAt: row.end_at || undefined,
+          endedAt: row.ended_at || undefined,
           meetingRoomId: row.room_name,
           status: row.status as LiveSessionStatus,
           recordingUrl: row.recording_url || undefined,
@@ -264,11 +268,15 @@ export async function saveLiveSessionToSupabase(session: LiveSession): Promise<b
         course_id: session.courseId || null,
         course_title: session.courseTitle || null,
         instructor_id: session.instructorId || null,
+        created_by: session.createdBy || session.instructorId || null,
         instructor_name: session.instructorName,
         date: session.date,
         start_time: session.startTime,
         end_time: session.endTime || null,
         duration_minutes: session.durationMinutes,
+        started_at: session.startedAt || null,
+        end_at: session.endAt || null,
+        ended_at: session.endedAt || null,
         room_name: session.meetingRoomId,
         status: session.status,
         recording_url: session.recordingUrl || null,
@@ -324,6 +332,62 @@ export async function deleteLiveSessionFromSupabase(id: string): Promise<boolean
       if (typeof window !== 'undefined') sessionStorage.setItem('supabase_no_live_table', 'true');
     } catch {}
     return false;
+  }
+}
+
+export function subscribeToLiveSessionsRealtime(
+  onUpdate: (session: LiveSession) => void,
+  onDelete?: (id: string) => void
+) {
+  if (!isSupabaseConfigured() || typeof window === 'undefined') return () => {};
+
+  try {
+    const channel = supabase
+      .channel('public:live_sessions_realtime')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'live_sessions' },
+        (payload) => {
+          if (payload.eventType === 'DELETE') {
+            if (payload.old?.id && onDelete) {
+              onDelete(payload.old.id);
+            }
+          } else if (payload.new) {
+            const row: any = payload.new;
+            const session: LiveSession = {
+              id: row.id,
+              title: row.title,
+              description: row.description || '',
+              courseId: row.course_id || undefined,
+              courseTitle: row.course_title || undefined,
+              instructorId: row.instructor_id || undefined,
+              createdBy: row.created_by || row.instructor_id || undefined,
+              instructorName: row.instructor_name || 'Instructor',
+              date: row.date,
+              startTime: row.start_time,
+              endTime: row.end_time || undefined,
+              durationMinutes: row.duration_minutes || 60,
+              startedAt: row.started_at || undefined,
+              endAt: row.end_at || undefined,
+              endedAt: row.ended_at || undefined,
+              meetingRoomId: row.room_name,
+              status: row.status as LiveSessionStatus,
+              recordingUrl: row.recording_url || undefined,
+              attendeesCount: row.attendees_count || 0,
+              createdAt: row.created_at
+            };
+            onUpdate(session);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  } catch (err) {
+    console.warn('Realtime subscription error:', err);
+    return () => {};
   }
 }
 

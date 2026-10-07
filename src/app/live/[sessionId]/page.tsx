@@ -15,6 +15,7 @@ import {
   Mic,
   MicOff,
   Play,
+  Plus,
   Radio,
   Users,
   X,
@@ -93,7 +94,7 @@ function PreJoinScreen({
             <button
               id="prejoin-toggle-mic"
               onClick={() => setMicOn((v) => !v)}
-              className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-2xl font-bold text-sm transition-all ${
+              className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-2xl font-bold text-sm transition-all cursor-pointer ${
                 micOn
                   ? 'bg-green-50 text-green-700 border-2 border-green-300'
                   : 'bg-slate-100 text-slate-500 border-2 border-slate-200'
@@ -105,7 +106,7 @@ function PreJoinScreen({
             <button
               id="prejoin-toggle-cam"
               onClick={() => setCamOn((v) => !v)}
-              className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-2xl font-bold text-sm transition-all ${
+              className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-2xl font-bold text-sm transition-all cursor-pointer ${
                 camOn
                   ? 'bg-green-50 text-green-700 border-2 border-green-300'
                   : 'bg-slate-100 text-slate-500 border-2 border-slate-200'
@@ -130,7 +131,7 @@ function PreJoinScreen({
         <button
           id="prejoin-join-btn"
           onClick={onJoin}
-          className="w-full flex items-center justify-center gap-2 py-3.5 rounded-full bg-gradient-to-r from-[#00b4d8] to-[#0077b6] text-white font-extrabold text-sm shadow-lg shadow-cyan-200 hover:shadow-xl transition-all hover:scale-[1.02]"
+          className="w-full flex items-center justify-center gap-2 py-3.5 rounded-full bg-gradient-to-r from-[#00b4d8] to-[#0077b6] text-white font-extrabold text-sm shadow-lg shadow-cyan-200 hover:shadow-xl transition-all hover:scale-[1.02] cursor-pointer"
         >
           <Play className="w-5 h-5" />
           Join Live Class
@@ -143,7 +144,7 @@ function PreJoinScreen({
 export default function LiveSessionPage() {
   const params = useParams();
   const router = useRouter();
-  const { user, accounts, liveSessions, updateLiveSession } = useApp();
+  const { user, courses, accounts, liveSessions, addLiveSession, updateLiveSession } = useApp();
 
   const sessionId = params?.sessionId as string;
   const [session, setSession] = useState<LiveSession | null>(null);
@@ -153,12 +154,27 @@ export default function LiveSessionPage() {
   const [jitsiCount, setJitsiCount] = useState(1);
   const [activeRemoteParticipants, setActiveRemoteParticipants] = useState<Map<string, string>>(new Map());
   const [isRosterOpen, setIsRosterOpen] = useState(false);
+  const [countdownStr, setCountdownStr] = useState<string>('00:00:00 remaining');
   const joinTimeRef = useRef<string | null>(null);
 
   // Real registered students from the database
   const realStudents = accounts.filter((a) => a.role === 'student');
 
-  // Resolve session from context
+  // Instructor: end session for everyone (auto-records authoritative ended_at time)
+  const handleEndSession = useCallback(() => {
+    if (!session) return;
+    const now = new Date();
+    const actualEndTime = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+    const endedAt = now.toISOString();
+    updateLiveSession(session.id, {
+      status: 'completed',
+      endTime: actualEndTime,
+      endedAt
+    });
+    setPageState('completed');
+  }, [session, updateLiveSession]);
+
+  // Resolve session from context with enrollment & expiration validation
   useEffect(() => {
     if (!sessionId) {
       setPageState('not-found');
@@ -170,6 +186,27 @@ export default function LiveSessionPage() {
       return;
     }
     setSession(found);
+
+    // 1. Enrollment / authorization check for students
+    if (user.role === 'student' && found.courseId) {
+      const isCourseAllowed = courses.some((c) => c.id === found.courseId);
+      if (!isCourseAllowed) {
+        setPageState('unauthorized');
+        return;
+      }
+    }
+
+    // 2. Authoritative expiration check: if end_at has already passed, session is completed
+    const isPastEndAt = found.endAt && Date.now() >= new Date(found.endAt).getTime();
+    if (found.status === 'live' && isPastEndAt) {
+      updateLiveSession(found.id, {
+        status: 'completed',
+        endedAt: found.endedAt || found.endAt,
+        endTime: found.endTime || new Date(found.endAt!).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })
+      });
+      setPageState('completed');
+      return;
+    }
 
     switch (found.status) {
       case 'scheduled':
@@ -187,10 +224,39 @@ export default function LiveSessionPage() {
       default:
         setPageState('not-found');
     }
-  }, [sessionId, liveSessions]);
+  }, [sessionId, liveSessions, user, courses, updateLiveSession]);
+
+  // Live Countdown Timer (Source of truth: authoritative session.endAt from Supabase/API)
+  useEffect(() => {
+    if (pageState !== 'live' || !session?.endAt) return;
+
+    const calculateCountdown = () => {
+      const endMs = new Date(session.endAt!).getTime();
+      const nowMs = Date.now();
+      const diff = endMs - nowMs;
+
+      if (diff <= 0) {
+        setCountdownStr('00:00:00 remaining');
+        // Auto-complete the session when duration elapsed
+        handleEndSession();
+        return;
+      }
+
+      const hours = Math.floor(diff / 3600000);
+      const minutes = Math.floor((diff % 3600000) / 60000);
+      const seconds = Math.floor((diff % 60000) / 1000);
+
+      const formatted = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')} remaining`;
+      setCountdownStr(formatted);
+    };
+
+    calculateCountdown();
+    const interval = setInterval(calculateCountdown, 1000);
+    return () => clearInterval(interval);
+  }, [pageState, session?.endAt, handleEndSession]);
 
   // Real-Time Eviction Listener:
-  // When instructor ends the session, students are kicked out immediately across devices
+  // When instructor ends the session or duration expires, students are evicted immediately across devices
   useEffect(() => {
     if (!sessionId) return;
 
@@ -362,27 +428,60 @@ export default function LiveSessionPage() {
     }
   }, []);
 
-  // Live active in room count:
-  // When only admin is in the room: 1
-  // When 1 student is in the room: 2
-  // When that student leaves: 1
   const liveInRoomCount = Math.max(1, jitsiCount > 0 ? jitsiCount : (activeRemoteParticipants.size + 1));
 
-  // Instructor: start a session from waiting state (auto-records actual start time)
+  // Instructor: start a session from waiting state (auto-records authoritative start/end times)
   const handleStartSession = useCallback(() => {
     if (!session) return;
-    const actualStartTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
-    updateLiveSession(session.id, { status: 'live', startTime: actualStartTime });
+    const now = new Date();
+    const duration = session.durationMinutes || 60;
+    const actualStartTime = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+    const startedAt = now.toISOString();
+    const endAt = new Date(now.getTime() + duration * 60000).toISOString();
+    const actualEndTime = new Date(now.getTime() + duration * 60000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+
+    updateLiveSession(session.id, {
+      status: 'live',
+      startedAt,
+      endAt,
+      startTime: actualStartTime,
+      endTime: actualEndTime
+    });
     setPageState('live');
   }, [session, updateLiveSession]);
 
-  // Instructor: end session for everyone (auto-records actual end time)
-  const handleEndSession = useCallback(() => {
+  // Instructor: Start New Session after completion (preserves previous completed session record)
+  const handleStartNewSession = () => {
     if (!session) return;
-    const actualEndTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
-    updateLiveSession(session.id, { status: 'completed', endTime: actualEndTime });
-    setPageState('completed');
-  }, [session, updateLiveSession]);
+    const now = new Date();
+    const duration = session.durationMinutes || 60;
+    const newId = `ls-${Date.now()}`;
+    const baseTitle = session.title.replace(/\s*\(Part\s*\d+\)$/i, '');
+    const newTitle = `${baseTitle} (Part 2)`;
+    const newRoom = `bookkeep-it-${newTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 35)}-${Date.now()}`;
+
+    const created = addLiveSession({
+      id: newId,
+      title: newTitle,
+      description: session.description,
+      courseId: session.courseId,
+      courseTitle: session.courseTitle,
+      instructorName: user.name,
+      instructorId: user.id,
+      createdBy: user.id || user.email,
+      date: now.toISOString().split('T')[0],
+      startTime: now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }),
+      endTime: new Date(now.getTime() + duration * 60000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }),
+      durationMinutes: duration,
+      startedAt: now.toISOString(),
+      endAt: new Date(now.getTime() + duration * 60000).toISOString(),
+      meetingRoomId: newRoom,
+      status: 'live',
+      participants: []
+    });
+
+    router.push(`/live/${created.id}`);
+  };
 
   /* ------------------------------------------------------------------ */
   /*  RENDER STATES                                                       */
@@ -392,6 +491,29 @@ export default function LiveSessionPage() {
     return (
       <div className="flex-1 flex items-center justify-center min-h-[60vh]">
         <div className="w-10 h-10 border-4 border-cyan-400 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  if (pageState === 'unauthorized') {
+    return (
+      <div className="w-full h-full min-h-[100dvh] bg-slate-50 flex items-center justify-center p-4 sm:p-6 animate-in fade-in duration-300">
+        <div className="card-theme bg-white border border-slate-200/80 rounded-3xl p-8 max-w-md w-full text-center space-y-4 shadow-xl">
+          <AlertTriangle className="w-12 h-12 text-rose-500 mx-auto" />
+          <h2 className="text-xl font-black text-slate-800">Access Restricted</h2>
+          <p className="text-xs text-slate-500">
+            You must be enrolled and authorized to access this live class.
+          </p>
+          <div className="pt-2">
+            <Link
+              href="/live"
+              className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-full bg-[#00b4d8] hover:bg-[#0077b6] text-white font-extrabold text-xs shadow-md shadow-cyan-500/20 transition cursor-pointer"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span>Back to Live Classes</span>
+            </Link>
+          </div>
+        </div>
       </div>
     );
   }
@@ -406,7 +528,7 @@ export default function LiveSessionPage() {
           <div className="pt-2">
             <Link
               href="/live"
-              className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-full bg-[#00b4d8] hover:bg-[#0077b6] text-white font-extrabold text-xs shadow-md shadow-cyan-500/20 transition"
+              className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-full bg-[#00b4d8] hover:bg-[#0077b6] text-white font-extrabold text-xs shadow-md shadow-cyan-500/20 transition cursor-pointer"
             >
               <ArrowLeft className="w-4 h-4" />
               <span>Back to Live Classes</span>
@@ -429,7 +551,7 @@ export default function LiveSessionPage() {
           <div className="pt-2">
             <Link
               href="/live"
-              className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-full bg-[#00b4d8] hover:bg-[#0077b6] text-white font-extrabold text-xs shadow-md shadow-cyan-500/20 transition"
+              className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-full bg-[#00b4d8] hover:bg-[#0077b6] text-white font-extrabold text-xs shadow-md shadow-cyan-500/20 transition cursor-pointer"
             >
               <ArrowLeft className="w-4 h-4" />
               <span>Back to Live Classes</span>
@@ -455,7 +577,7 @@ export default function LiveSessionPage() {
             </span>
             <h2 className="text-xl font-black text-slate-800 pt-1.5">{session.title}</h2>
             <p className="text-xs text-slate-500 font-medium">
-              {session.date} · {session.startTime}{session.endTime ? ` – ${session.endTime}` : ''}
+              {session.date} · {session.startTime}{session.endTime ? ` – ${session.endTime}` : ''} ({session.durationMinutes} min)
             </p>
           </div>
 
@@ -494,11 +616,21 @@ export default function LiveSessionPage() {
             </div>
           )}
 
-          {/* ONLY 1 CLEAR BACK BUTTON */}
-          <div className="pt-2">
+          {/* Action Buttons */}
+          <div className="space-y-2 pt-2">
+            {user.role === 'admin' && (
+              <button
+                onClick={handleStartNewSession}
+                className="w-full flex items-center justify-center gap-2 py-3 px-6 rounded-full bg-gradient-to-r from-red-500 to-rose-600 hover:from-red-600 hover:to-rose-700 text-white font-extrabold text-xs shadow-md shadow-red-500/25 transition-all hover:scale-[1.01] active:scale-95 cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Start New Session</span>
+              </button>
+            )}
+
             <Link
               href="/live"
-              className="w-full flex items-center justify-center gap-2 py-3 px-6 rounded-full bg-[#00b4d8] hover:bg-[#0077b6] text-white font-extrabold text-xs shadow-md shadow-cyan-500/25 transition-all hover:scale-[1.01] active:scale-95"
+              className="w-full flex items-center justify-center gap-2 py-3 px-6 rounded-full bg-[#00b4d8] hover:bg-[#0077b6] text-white font-extrabold text-xs shadow-md shadow-cyan-500/25 transition-all hover:scale-[1.01] active:scale-95 cursor-pointer"
             >
               <ArrowLeft className="w-4 h-4" />
               <span>Back to Live Classes</span>
@@ -529,8 +661,8 @@ export default function LiveSessionPage() {
               <p className="font-bold text-slate-700">{session.date}</p>
             </div>
             <div>
-              <p className="text-slate-400 font-semibold text-[11px]">Time</p>
-              <p className="font-bold text-slate-700">{session.startTime} – {session.endTime || `+${session.durationMinutes}m`}</p>
+              <p className="text-slate-400 font-semibold text-[11px]">Duration</p>
+              <p className="font-bold text-slate-700">{session.durationMinutes} Minutes</p>
             </div>
             <div>
               <p className="text-slate-400 font-semibold text-[11px]">Instructor</p>
@@ -553,7 +685,7 @@ export default function LiveSessionPage() {
             <button
               id="start-session-btn"
               onClick={handleStartSession}
-              className="w-full flex items-center justify-center gap-2 py-3 rounded-full bg-gradient-to-r from-red-500 to-rose-600 text-white font-extrabold text-xs shadow-md shadow-red-500/25 hover:shadow-lg transition-all active:scale-95"
+              className="w-full flex items-center justify-center gap-2 py-3 rounded-full bg-gradient-to-r from-red-500 to-rose-600 text-white font-extrabold text-xs shadow-md shadow-red-500/25 hover:shadow-lg transition-all active:scale-95 cursor-pointer"
             >
               <Radio className="w-4 h-4 animate-pulse" />
               <span>Start Live Class & Enter</span>
@@ -568,7 +700,7 @@ export default function LiveSessionPage() {
           <div className="pt-1">
             <Link
               href="/live"
-              className="w-full flex items-center justify-center gap-2 py-2.5 px-5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition active:scale-95"
+              className="w-full flex items-center justify-center gap-2 py-2.5 px-5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition active:scale-95 cursor-pointer"
             >
               <ArrowLeft className="w-4 h-4" />
               <span>Back to Live Classes</span>
@@ -605,10 +737,10 @@ export default function LiveSessionPage() {
             <button
               id="end-session-btn"
               onClick={handleEndSession}
-              className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-red-50 text-red-600 border border-red-200 font-bold text-xs hover:bg-red-100 transition"
+              className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-red-50 text-red-600 border border-red-200 font-bold text-xs hover:bg-red-100 transition cursor-pointer"
             >
               <XCircle className="w-3.5 h-3.5" />
-              End Session
+              End for All
             </button>
           )}
         </div>
@@ -649,7 +781,7 @@ export default function LiveSessionPage() {
                 <span className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
                 LIVE
               </span>
-              <span className="font-bold text-xs sm:text-sm text-white truncate max-w-[200px] sm:max-w-md">{session.title}</span>
+              <span className="font-bold text-xs sm:text-sm text-white truncate max-w-[150px] sm:max-w-md">{session.title}</span>
             </div>
             <p className="text-white/60 text-[10px] sm:text-[11px] truncate">
               {session.instructorName}
@@ -659,13 +791,19 @@ export default function LiveSessionPage() {
           </div>
         </div>
 
+        {/* Center: Authoritative Remaining Countdown Timer */}
+        <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-cyan-950/80 border border-cyan-500/40 text-cyan-200 text-[11px] sm:text-xs font-mono font-bold tracking-wider shadow-sm">
+          <Clock className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+          <span>{countdownStr}</span>
+        </div>
+
         {/* Right side controls */}
         <div className="flex items-center gap-2 shrink-0">
           {/* Class Roster Button - displays exact live count */}
           <button
             id="live-roster-btn"
             onClick={() => setIsRosterOpen((v) => !v)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/20 text-white font-bold text-xs transition active:scale-95"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/20 text-white font-bold text-xs transition active:scale-95 cursor-pointer"
             title="View Enrolled Students & Attendance"
           >
             <Users className="w-3.5 h-3.5 text-cyan-400" />
@@ -676,7 +814,7 @@ export default function LiveSessionPage() {
             <button
               id="live-end-session-btn"
               onClick={handleEndSession}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-red-600 hover:bg-red-700 text-white font-bold text-xs shadow-md shadow-red-600/30 transition active:scale-95"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-red-600 hover:bg-red-700 text-white font-bold text-xs shadow-md shadow-red-600/30 transition active:scale-95 cursor-pointer"
             >
               <XCircle className="w-3.5 h-3.5" />
               <span>End for All</span>
@@ -685,7 +823,7 @@ export default function LiveSessionPage() {
             <button
               id="live-leave-session-btn"
               onClick={handleLeft}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-700 hover:bg-slate-600 text-white font-bold text-xs transition active:scale-95"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-700 hover:bg-slate-600 text-white font-bold text-xs transition active:scale-95 cursor-pointer"
             >
               <ArrowLeft className="w-3.5 h-3.5" />
               <span>Leave</span>
@@ -722,7 +860,7 @@ export default function LiveSessionPage() {
               </div>
               <button
                 onClick={() => setIsRosterOpen(false)}
-                className="p-1 rounded-lg text-white/60 hover:text-white hover:bg-white/10 transition"
+                className="p-1 rounded-lg text-white/60 hover:text-white hover:bg-white/10 transition cursor-pointer"
                 title="Close"
               >
                 <X className="w-4 h-4" />
