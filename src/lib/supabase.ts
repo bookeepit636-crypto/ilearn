@@ -162,46 +162,82 @@ export async function supabaseLogout() {
 // ==========================================
 
 export async function fetchLiveSessionsFromSupabase(): Promise<LiveSession[]> {
-  if (!isSupabaseConfigured()) return [];
-  try {
-    const { data, error } = await supabase
-      .from('live_sessions')
-      .select('*')
-      .order('date', { ascending: true });
+  let cloudSessions: LiveSession[] = [];
 
-    if (error) {
-      console.warn('Supabase fetch live_sessions note:', error.message);
-      return [];
+  // 1. Try Supabase first if configured
+  if (isSupabaseConfigured()) {
+    try {
+      const { data, error } = await supabase
+        .from('live_sessions')
+        .select('*')
+        .order('date', { ascending: true });
+
+      if (!error && data && Array.isArray(data) && data.length > 0) {
+        cloudSessions = data.map((row: any) => ({
+          id: row.id,
+          title: row.title,
+          description: row.description || '',
+          courseId: row.course_id || undefined,
+          courseTitle: row.course_title || undefined,
+          instructorId: row.instructor_id || undefined,
+          instructorName: row.instructor_name || 'Instructor',
+          date: row.date,
+          startTime: row.start_time,
+          endTime: row.end_time || undefined,
+          durationMinutes: row.duration_minutes || 60,
+          meetingRoomId: row.room_name,
+          status: row.status as LiveSessionStatus,
+          recordingUrl: row.recording_url || undefined,
+          attendeesCount: row.attendees_count || 0,
+          createdAt: row.created_at
+        }));
+      }
+    } catch {
+      // Ignore Supabase table not created error
     }
-
-    if (!data || !Array.isArray(data)) return [];
-
-    return data.map((row: any) => ({
-      id: row.id,
-      title: row.title,
-      description: row.description || '',
-      courseId: row.course_id || undefined,
-      courseTitle: row.course_title || undefined,
-      instructorId: row.instructor_id || undefined,
-      instructorName: row.instructor_name || 'Instructor',
-      date: row.date,
-      startTime: row.start_time,
-      endTime: row.end_time || undefined,
-      durationMinutes: row.duration_minutes || 60,
-      meetingRoomId: row.room_name,
-      status: row.status as LiveSessionStatus,
-      recordingUrl: row.recording_url || undefined,
-      attendeesCount: row.attendees_count || 0,
-      createdAt: row.created_at
-    }));
-  } catch (err) {
-    console.warn('Failed to fetch live_sessions from Supabase:', err);
-    return [];
   }
+
+  // 2. Also sync with server API /api/live for unified cross-client availability
+  try {
+    const res = await fetch('/api/live', { cache: 'no-store' });
+    if (res.ok) {
+      const json = await res.json();
+      if (json.success && Array.isArray(json.sessions) && json.sessions.length > 0) {
+        // Merge without duplicate IDs, prioritizing newer data
+        const map = new Map<string, LiveSession>();
+        cloudSessions.forEach((s) => map.set(s.id, s));
+        json.sessions.forEach((s: LiveSession) => {
+          if (!map.has(s.id)) {
+            map.set(s.id, s);
+          } else {
+            // Merge status update from API
+            map.set(s.id, { ...map.get(s.id)!, ...s });
+          }
+        });
+        cloudSessions = Array.from(map.values());
+      }
+    }
+  } catch {
+    // Client-side fetch error ignored
+  }
+
+  return cloudSessions;
 }
 
 export async function saveLiveSessionToSupabase(session: LiveSession): Promise<boolean> {
-  if (!isSupabaseConfigured()) return false;
+  // 1. Send to /api/live server store
+  try {
+    fetch('/api/live', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ session })
+    }).catch(() => {});
+  } catch {
+    // ignore
+  }
+
+  // 2. Also persist to Supabase if configured
+  if (!isSupabaseConfigured()) return true;
   try {
     const { error } = await supabase.from('live_sessions').upsert(
       {
@@ -225,7 +261,7 @@ export async function saveLiveSessionToSupabase(session: LiveSession): Promise<b
     );
 
     if (error) {
-      console.warn('Supabase save live_session warning:', error.message);
+      console.warn('Supabase save live_session note:', error.message);
       return false;
     }
     return true;
@@ -236,7 +272,15 @@ export async function saveLiveSessionToSupabase(session: LiveSession): Promise<b
 }
 
 export async function deleteLiveSessionFromSupabase(id: string): Promise<boolean> {
-  if (!isSupabaseConfigured()) return false;
+  // 1. Delete from /api/live
+  try {
+    fetch(`/api/live?id=${encodeURIComponent(id)}`, { method: 'DELETE' }).catch(() => {});
+  } catch {
+    // ignore
+  }
+
+  // 2. Delete from Supabase
+  if (!isSupabaseConfigured()) return true;
   try {
     const { error } = await supabase.from('live_sessions').delete().eq('id', id);
     if (error) {

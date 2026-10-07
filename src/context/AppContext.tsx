@@ -87,7 +87,7 @@ interface AppContextType {
   adminTab: AdminTabType;
   setAdminTab: (tab: AdminTabType) => void;
   // Live Sessions
-  addLiveSession: (session: Omit<LiveSession, 'id' | 'createdAt' | 'attendeesCount'>) => void;
+  addLiveSession: (session: Omit<LiveSession, 'id' | 'createdAt' | 'attendeesCount'> & { id?: string }) => LiveSession;
   updateLiveSession: (id: string, updates: Partial<LiveSession>) => void;
   deleteLiveSession: (id: string) => void;
 }
@@ -301,10 +301,62 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         console.warn('Could not sync cloud live sessions:', e);
       }
     };
+
+    // Initial fetch
     syncCloudLiveSessions();
+
+    // 1. Cross-tab BroadcastChannel for 0ms latency sync across tabs
+    let channel: BroadcastChannel | null = null;
+    try {
+      if (typeof window !== 'undefined' && typeof BroadcastChannel !== 'undefined') {
+        channel = new BroadcastChannel('bookkeepit_live_sync');
+        channel.onmessage = () => {
+          syncCloudLiveSessions();
+        };
+      }
+    } catch {
+      // ignore
+    }
+
+    // 2. Storage event listener for cross-tab storage changes
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === 'bookkeepit_app_state' && e.newValue) {
+        try {
+          const parsed = JSON.parse(e.newValue);
+          if (parsed.liveSessions && Array.isArray(parsed.liveSessions)) {
+            setLiveSessions(parsed.liveSessions);
+          }
+        } catch {
+          // ignore
+        }
+      }
+    };
+    window.addEventListener('storage', handleStorage);
+
+    // 3. Periodic real-time polling every 3.5 seconds to keep all student devices synced
+    const pollInterval = setInterval(() => {
+      syncCloudLiveSessions();
+    }, 3500);
+
+    // 4. Instant sync on window focus and visibility change
+    const handleFocus = () => {
+      syncCloudLiveSessions();
+    };
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        syncCloudLiveSessions();
+      }
+    };
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleVisibility);
 
     return () => {
       isMounted = false;
+      channel?.close();
+      window.removeEventListener('storage', handleStorage);
+      clearInterval(pollInterval);
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleVisibility);
     };
   }, []);
 
@@ -656,16 +708,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // Live Session CRUD
-  const addLiveSession = (session: Omit<LiveSession, 'id' | 'createdAt' | 'attendeesCount'>) => {
+  const addLiveSession = (session: Omit<LiveSession, 'id' | 'createdAt' | 'attendeesCount'> & { id?: string }): LiveSession => {
     const newSession: LiveSession = {
       ...session,
-      id: `ls-${Date.now()}`,
+      id: session.id || `ls-${Date.now()}`,
       attendeesCount: 0,
       createdAt: new Date().toISOString()
     };
     setLiveSessions((prev) => [newSession, ...prev]);
-    // Sync to Supabase Cloud in background
+    // Sync to Supabase Cloud and /api/live in background
     saveLiveSessionToSupabase(newSession);
+
+    try {
+      if (typeof window !== 'undefined' && typeof BroadcastChannel !== 'undefined') {
+        const bc = new BroadcastChannel('bookkeepit_live_sync');
+        bc.postMessage({ type: 'sync', session: newSession });
+        bc.close();
+      }
+    } catch {}
 
     // Broadcast notification to students
     const notif: NotificationItem = {
@@ -678,6 +738,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       sender: session.instructorName
     };
     setNotifications((prev) => [notif, ...prev]);
+    return newSession;
   };
 
   const updateLiveSession = (id: string, updates: Partial<LiveSession>) => {
@@ -694,6 +755,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (updatedSession) {
       saveLiveSessionToSupabase(updatedSession);
     }
+
+    try {
+      if (typeof window !== 'undefined' && typeof BroadcastChannel !== 'undefined') {
+        const bc = new BroadcastChannel('bookkeepit_live_sync');
+        bc.postMessage({ type: 'sync', id, updates });
+        bc.close();
+      }
+    } catch {}
+
     // If a session goes live, send a notification
     if (updates.status === 'live') {
       const session = liveSessions.find((s) => s.id === id);
@@ -715,6 +785,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const deleteLiveSession = (id: string) => {
     setLiveSessions((prev) => prev.filter((s) => s.id !== id));
     deleteLiveSessionFromSupabase(id);
+
+    try {
+      if (typeof window !== 'undefined' && typeof BroadcastChannel !== 'undefined') {
+        const bc = new BroadcastChannel('bookkeepit_live_sync');
+        bc.postMessage({ type: 'delete', id });
+        bc.close();
+      }
+    } catch {}
   };
 
   return (

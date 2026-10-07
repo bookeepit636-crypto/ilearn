@@ -32,6 +32,7 @@ import { Course, DownloadableMaterial, Lesson, LiveSession, LiveSessionStatus, Q
 import { uploadToCloudinary } from '@/lib/cloudinary';
 import { saveVideoBlob, deleteVideoBlob, generateVideoThumbnail } from '@/lib/videoStorage';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 
 export default function AdminPage() {
   const {
@@ -1613,10 +1614,11 @@ function LiveClassesAdminPanel({
   liveSessions: LiveSession[];
   courses: Course[];
   user: UserProfile;
-  addLiveSession: (s: Omit<LiveSession, 'id' | 'createdAt' | 'attendeesCount'>) => void;
+  addLiveSession: (s: Omit<LiveSession, 'id' | 'createdAt' | 'attendeesCount'> & { id?: string }) => LiveSession;
   updateLiveSession: (id: string, u: Partial<LiveSession>) => void;
   deleteLiveSession: (id: string) => void;
 }) {
+  const router = useRouter();
   const [lsTitle, setLsTitle] = useState('');
   const [lsDesc, setLsDesc] = useState('');
   const [lsCourseId, setLsCourseId] = useState('');
@@ -1632,14 +1634,18 @@ function LiveClassesAdminPanel({
     cancelled: 'bg-slate-100 text-slate-500'
   };
 
-  const handleCreate = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!lsTitle) return;
+  const handleCreate = (startNow = false) => {
+    if (!lsTitle.trim()) {
+      alert('Please enter a session title');
+      return;
+    }
     const selectedCourse = courses.find((c) => c.id === lsCourseId);
-    // Generate a unique, URL-safe room name
+    const generatedId = `ls-${Date.now()}`;
     const roomId = `bookkeep-it-${lsTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 40)}-${Date.now()}`;
-    addLiveSession({
-      title: lsTitle,
+
+    const created = addLiveSession({
+      id: generatedId,
+      title: lsTitle.trim(),
       description: lsDesc || 'Live bookkeeping class session.',
       courseId: lsCourseId || undefined,
       courseTitle: selectedCourse?.title,
@@ -1650,11 +1656,18 @@ function LiveClassesAdminPanel({
       endTime: lsEnd,
       durationMinutes: lsDuration,
       meetingRoomId: roomId,
-      status: 'scheduled'
+      status: startNow ? 'live' : 'scheduled'
     });
+
     setLsTitle('');
     setLsDesc('');
-    alert('Live class session scheduled successfully!');
+
+    if (startNow) {
+      // Direct Google Meet / Zoom style navigation into the video meeting
+      router.push(`/live/${created.id}`);
+    } else {
+      alert('Live class scheduled successfully! It is now visible on student dashboards and the Live Classes page.');
+    }
   };
 
   return (
@@ -1663,9 +1676,9 @@ function LiveClassesAdminPanel({
       <div className="card-theme p-6 rounded-3xl bg-white border border-slate-100 space-y-4">
         <h3 className="text-base font-bold text-slate-800 flex items-center gap-2 border-b border-slate-100 pb-2">
           <Plus className="w-4 h-4 text-indigo-600" />
-          Schedule New Live Class
+          Create or Schedule Live Class
         </h3>
-        <form onSubmit={handleCreate} className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+        <form onSubmit={(e) => { e.preventDefault(); handleCreate(false); }} className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
           <div className="md:col-span-2">
             <label className="block text-slate-700 font-semibold mb-1">Session Title</label>
             <input
@@ -1742,13 +1755,22 @@ function LiveClassesAdminPanel({
               />
             </div>
           </div>
-          <div className="md:col-span-2 flex justify-end pt-2">
+          <div className="md:col-span-2 flex flex-col sm:flex-row justify-end gap-3 pt-2">
             <button
-              type="submit"
-              className="px-6 py-2.5 rounded-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs flex items-center gap-2 shadow-md shadow-indigo-600/20 transition"
+              type="button"
+              onClick={() => handleCreate(true)}
+              className="px-6 py-2.5 rounded-full bg-gradient-to-r from-red-500 to-rose-600 hover:from-red-600 hover:to-rose-700 text-white font-extrabold text-xs flex items-center justify-center gap-2 shadow-md shadow-red-500/25 transition active:scale-95"
             >
-              <Radio className="w-4 h-4" />
-              Schedule Live Class
+              <Radio className="w-4 h-4 animate-pulse" />
+              Start Instant Meeting Now (Direct to Video)
+            </button>
+            <button
+              type="button"
+              onClick={() => handleCreate(false)}
+              className="px-6 py-2.5 rounded-full bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-md transition active:scale-95"
+            >
+              <Clock className="w-4 h-4" />
+              Schedule for Later
             </button>
           </div>
         </form>
@@ -1759,14 +1781,14 @@ function LiveClassesAdminPanel({
         <h3 className="text-base font-bold text-slate-800 border-b border-slate-100 pb-2">All Live Sessions ({liveSessions.length})</h3>
         <div className="space-y-3">
           {liveSessions.length === 0 && (
-            <p className="text-xs text-slate-400 text-center py-8">No live sessions yet. Schedule your first class above.</p>
+            <p className="text-xs text-slate-400 text-center py-8">No live sessions yet. Schedule or start your first class above.</p>
           )}
           {liveSessions.map((session) => (
             <div key={session.id} className="flex flex-col sm:flex-row sm:items-center gap-3 p-4 rounded-2xl bg-slate-50 border border-slate-200">
               <div className="flex-1 min-w-0 space-y-0.5">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className={`text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full ${statusPill[session.status]}`}>
-                    {session.status === 'live' ? '🔴 Live' : session.status}
+                    {session.status === 'live' ? '🔴 Live Now' : session.status}
                   </span>
                   {session.courseTitle && (
                     <span className="text-[10px] text-[#0077b6] font-bold">{session.courseTitle}</span>
@@ -1779,20 +1801,23 @@ function LiveClassesAdminPanel({
                 {/* Status control buttons */}
                 {session.status === 'scheduled' && (
                   <button
-                    onClick={() => updateLiveSession(session.id, { status: 'live' })}
-                    className="px-3 py-1.5 rounded-full bg-red-500 hover:bg-red-600 text-white font-bold text-[11px] flex items-center gap-1 transition"
+                    onClick={() => {
+                      updateLiveSession(session.id, { status: 'live' });
+                      router.push(`/live/${session.id}`);
+                    }}
+                    className="px-3 py-1.5 rounded-full bg-red-500 hover:bg-red-600 text-white font-bold text-[11px] flex items-center gap-1 shadow-sm transition"
                   >
-                    <Radio className="w-3 h-3" /> Go Live
+                    <Radio className="w-3 h-3" /> Go Live & Enter
                   </button>
                 )}
                 {session.status === 'live' && (
                   <>
-                    <Link
-                      href={`/live/${session.id}`}
-                      className="px-3 py-1.5 rounded-full bg-green-600 hover:bg-green-700 text-white font-bold text-[11px] flex items-center gap-1 transition"
+                    <button
+                      onClick={() => router.push(`/live/${session.id}`)}
+                      className="px-3 py-1.5 rounded-full bg-green-600 hover:bg-green-700 text-white font-bold text-[11px] flex items-center gap-1 shadow-sm transition"
                     >
                       <Radio className="w-3 h-3" /> Enter Room
-                    </Link>
+                    </button>
                     <button
                       onClick={() => updateLiveSession(session.id, { status: 'completed' })}
                       className="px-3 py-1.5 rounded-full bg-slate-700 hover:bg-slate-800 text-white font-bold text-[11px] flex items-center gap-1 transition"

@@ -169,7 +169,8 @@ export default function LiveSessionPage() {
         setPageState('waiting');
         break;
       case 'live':
-        setPageState('prejoin');
+        // Proceed directly into the video classroom like Google Meet / Zoom
+        setPageState('live');
         break;
       case 'completed':
         setPageState('completed');
@@ -219,7 +220,7 @@ export default function LiveSessionPage() {
   const handleStartSession = useCallback(() => {
     if (!session) return;
     updateLiveSession(session.id, { status: 'live' });
-    setPageState('prejoin');
+    setPageState('live');
   }, [session, updateLiveSession]);
 
   // Instructor: end session
@@ -427,42 +428,60 @@ export default function LiveSessionPage() {
   // LIVE CLASSROOM VIEW
   // ----------------------------------------------------------------
   return (
-    <div className="flex flex-col gap-0 -mx-3.5 sm:-mx-6 md:-mx-8 -mt-6 md:-mt-8 animate-in fade-in duration-300">
+    <div className="flex-1 w-full h-[100dvh] flex flex-col bg-slate-950 overflow-hidden select-none">
       {/* Session top bar */}
-      <div className="flex items-center gap-3 px-4 py-3 bg-slate-900 text-white shrink-0">
-        <Link href="/live" className="text-white/50 hover:text-white transition">
-          <ArrowLeft className="w-5 h-5" />
-        </Link>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="inline-flex items-center gap-1 text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-red-500 text-white">
-              <span className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
-              LIVE
-            </span>
-            <span className="font-bold text-sm text-white truncate">{session.title}</span>
+      <div className="flex items-center justify-between gap-3 px-3 sm:px-5 py-2.5 bg-slate-900 border-b border-white/10 text-white shrink-0 z-10">
+        <div className="flex items-center gap-3 min-w-0">
+          <Link
+            href="/live"
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-white/10 hover:bg-white/20 text-white/80 hover:text-white text-xs font-semibold transition"
+            title="Leave Meeting"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            <span className="hidden sm:inline">Leave</span>
+          </Link>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="inline-flex items-center gap-1 text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-red-500 text-white shadow-sm shadow-red-500/50">
+                <span className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
+                LIVE
+              </span>
+              <span className="font-bold text-xs sm:text-sm text-white truncate max-w-[200px] sm:max-w-md">{session.title}</span>
+            </div>
+            <p className="text-white/60 text-[10px] sm:text-[11px] truncate">
+              {session.instructorName}
+              {session.courseTitle ? ` · ${session.courseTitle}` : ''}
+              {participantCount > 0 ? ` · ${participantCount + 1} connected` : ''}
+            </p>
           </div>
-          <p className="text-white/50 text-[11px] truncate">
-            {session.instructorName}
-            {session.courseTitle ? ` · ${session.courseTitle}` : ''}
-            {participantCount > 0 ? ` · ${participantCount + 1} participants` : ''}
-          </p>
         </div>
 
-        {/* Instructor: end session */}
-        {user.role === 'admin' && (
-          <button
-            id="live-end-session-btn"
-            onClick={handleEndSession}
-            className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-red-600 hover:bg-red-700 text-white font-bold text-xs transition"
-          >
-            <XCircle className="w-3.5 h-3.5" />
-            End Session
-          </button>
-        )}
+        {/* Right side controls */}
+        <div className="flex items-center gap-2 shrink-0">
+          {user.role === 'admin' ? (
+            <button
+              id="live-end-session-btn"
+              onClick={handleEndSession}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-red-600 hover:bg-red-700 text-white font-bold text-xs shadow-md shadow-red-600/30 transition"
+            >
+              <XCircle className="w-3.5 h-3.5" />
+              <span>End for All</span>
+            </button>
+          ) : (
+            <button
+              id="live-leave-session-btn"
+              onClick={handleLeft}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-700 hover:bg-slate-600 text-white font-bold text-xs transition"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span>Leave</span>
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Jitsi Classroom fills remaining height */}
-      <div className="flex-1" style={{ minHeight: 'calc(100vh - 120px)' }}>
+      <div className="flex-1 w-full h-full min-h-0 relative flex flex-col bg-slate-950">
         <JitsiClassroom
           roomName={session.meetingRoomId}
           displayName={user.name}

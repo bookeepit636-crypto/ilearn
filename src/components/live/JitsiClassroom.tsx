@@ -69,11 +69,17 @@ const JitsiClassroom: React.FC<JitsiClassroomProps> = ({
   };
 
   const configOverwrite: IJitsiMeetingProps['configOverwrite'] = {
-    startWithAudioMuted: !isInstructor,
+    startWithAudioMuted: false,
     startWithVideoMuted: false,
     disableDeepLinking: true,
     enableNoisyMicDetection: true,
-    prejoinPageEnabled: false,           // We handle pre-join UI ourselves
+    prejoinPageEnabled: false,
+    // Modern Jitsi Web configuration to skip the nested secondary join prompt
+    // and proceed directly to video tiles like Google Meet
+    prejoinConfig: {
+      enabled: false
+    },
+    skipPrejoinScreen: true,
     toolbarButtons: [
       'microphone',
       'camera',
@@ -85,6 +91,7 @@ const JitsiClassroom: React.FC<JitsiClassroomProps> = ({
       'participants-pane',
       'raisehand',
       'tileview',
+      'chat',
       'videoquality',
       'filmstrip',
       'stats',
@@ -93,7 +100,6 @@ const JitsiClassroom: React.FC<JitsiClassroomProps> = ({
     ],
     // Subject shown in the meeting header
     subject: sessionTitle || 'BookKeep-It Live Class',
-    // Prevent guests who know the room name from entering without joining flow
     requireDisplayName: true,
   };
 
@@ -107,7 +113,7 @@ const JitsiClassroom: React.FC<JitsiClassroomProps> = ({
   };
 
   return (
-    <div className="w-full flex-1 min-h-0 flex flex-col">
+    <div className="w-full h-full flex-1 min-h-0 flex flex-col bg-slate-950">
       <JitsiMeeting
         domain="meet.jit.si"
         roomName={roomName}
@@ -122,9 +128,8 @@ const JitsiClassroom: React.FC<JitsiClassroomProps> = ({
           if (node) {
             node.style.width = '100%';
             node.style.height = '100%';
-            node.style.minHeight = '500px';
+            node.style.flex = '1';
             node.style.border = 'none';
-            node.style.borderRadius = '1rem';
           }
         }}
       />

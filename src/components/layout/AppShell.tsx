@@ -8,13 +8,27 @@ import { SearchModal } from '@/components/search/SearchModal';
 import { NotificationDrawer } from '@/components/notifications/NotificationDrawer';
 import { AuthScreen } from '@/components/auth/AuthScreen';
 
+import { usePathname } from 'next/navigation';
 import { MobileNav } from '@/components/layout/MobileNav';
 
 export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const pathname = usePathname();
   const { isAuthenticated } = useApp();
 
   if (!isAuthenticated) {
     return <AuthScreen />;
+  }
+
+  // If in active live meeting room (/live/[sessionId]), render full-screen immersive video meeting
+  // like Google Meet or Zoom, avoiding mobile nav overlap and layout squishing
+  const isLiveMeetingRoom = pathname?.startsWith('/live/') && pathname !== '/live';
+
+  if (isLiveMeetingRoom) {
+    return (
+      <div className="fixed inset-0 w-full h-[100dvh] bg-slate-950 flex flex-col overflow-hidden z-50">
+        {children}
+      </div>
+    );
   }
 
   return (
