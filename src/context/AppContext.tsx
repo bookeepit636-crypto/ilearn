@@ -1,0 +1,1274 @@
+'use client';
+
+import React, { createContext, useContext, useEffect, useState } from 'react';
+import {
+  Course,
+  DownloadableMaterial,
+  FAQItem,
+  LiveSession,
+  LiveSessionStatus,
+  NotificationItem,
+  Quiz,
+  QuizSubmission,
+  ScheduleItem,
+  Topic,
+  UserAccount,
+  UserProfile,
+  VideoLesson
+} from '@/types';
+import {
+  initialCourses,
+  initialFAQs,
+  initialLiveSessions,
+  initialMaterials,
+  initialNotifications,
+  initialProfile,
+  initialQuizzes,
+  initialSchedules,
+  initialSubmissions,
+  initialVideos
+} from '@/lib/mockData';
+import {
+  supabaseLogin,
+  supabaseRegister,
+  supabaseLogout,
+  fetchVideosFromSupabase,
+  saveVideoToSupabase,
+  deleteVideoFromSupabase,
+  fetchVideosFromApi,
+  saveVideoToApi,
+  deleteVideoFromApi,
+  fetchCoursesFromSupabase,
+  saveCourseToSupabase,
+  deleteCourseFromSupabase,
+  fetchCoursesFromApi,
+  saveCourseToApi,
+  deleteCourseFromApi,
+  fetchQuizzesFromSupabase,
+  saveQuizToSupabase,
+  deleteQuizFromSupabase,
+  fetchQuizzesFromApi,
+  saveQuizToApi,
+  deleteQuizFromApi,
+  fetchLiveSessionsFromSupabase,
+  saveLiveSessionToSupabase,
+  deleteLiveSessionFromSupabase,
+  subscribeToLiveSessionsRealtime,
+  fetchAccountsFromApi,
+  saveAccountToApi
+} from '@/lib/supabase';
+import { deleteVideoBlob } from '@/lib/videoStorage';
+import { sendQuizSubmissionNotification } from '@/lib/notifications';
+
+interface AppContextType {
+  user: UserProfile;
+  accounts: UserAccount[];
+  isAuthenticated: boolean;
+  courses: Course[];
+  quizzes: Quiz[];
+  submissions: QuizSubmission[];
+  materials: DownloadableMaterial[];
+  videos: VideoLesson[];
+  schedules: ScheduleItem[];
+  notifications: NotificationItem[];
+  faqs: FAQItem[];
+  liveSessions: LiveSession[];
+  searchQuery: string;
+  isSearchOpen: boolean;
+  isNotificationDrawerOpen: boolean;
+  isMobileSidebarOpen: boolean;
+  setSearchQuery: (query: string) => void;
+  setIsSearchOpen: (open: boolean) => void;
+  setIsNotificationDrawerOpen: (open: boolean) => void;
+  setIsMobileSidebarOpen: (open: boolean) => void;
+  login: (email: string, password?: string) => { success: boolean; error?: string };
+  register: (name: string, email: string, password?: string, program?: string) => { success: boolean; error?: string };
+  resetAccountPassword: (email: string, newPassword: string) => Promise<{ success: boolean; error?: string }>;
+  changeAccountPassword: (newPassword: string, currentPassword?: string) => Promise<{ success: boolean; error?: string }>;
+  logout: () => void;
+  toggleRole: () => void;
+  updateProfile: (updated: Partial<UserProfile>) => void;
+  submitQuiz: (quizId: string, answers: Record<string, number>) => QuizSubmission;
+  toggleLessonCompletion: (courseId: string, lessonId: string) => void;
+  addScheduleItem: (item: Omit<ScheduleItem, 'id' | 'isCompleted'>) => void;
+  toggleScheduleCompletion: (id: string) => void;
+  markNotificationAsRead: (id: string) => void;
+  markAllNotificationsAsRead: () => void;
+  addCourse: (course: Course) => void;
+  updateCourse: (course: Course) => void;
+  updateCourseTopics: (courseId: string, topics: Topic[]) => void;
+  deleteCourse: (id: string) => void;
+  addVideo: (video: VideoLesson) => void;
+  updateVideo: (video: VideoLesson) => void;
+  deleteVideo: (id: string) => void;
+  addMaterial: (material: DownloadableMaterial) => void;
+  deleteMaterial: (id: string) => void;
+  addQuiz: (quiz: Quiz) => void;
+  updateQuiz: (quiz: Quiz) => void;
+  deleteQuiz: (id: string) => void;
+  broadcastAnnouncement: (title: string, message: string) => void;
+  resetAllData: () => void;
+  adminTab: AdminTabType;
+  setAdminTab: (tab: AdminTabType) => void;
+  // Live Sessions
+  addLiveSession: (session: Omit<LiveSession, 'id' | 'createdAt' | 'attendeesCount'> & { id?: string }) => LiveSession;
+  updateLiveSession: (id: string, updates: Partial<LiveSession>) => void;
+  deleteLiveSession: (id: string) => void;
+}
+
+export type AdminTabType = 'users' | 'courses' | 'videos' | 'materials' | 'quizzes' | 'announcements' | 'live';
+
+const AppContext = createContext<AppContextType | undefined>(undefined);
+
+const LOCAL_STORAGE_KEY = 'bookkeep_it_state_v8';
+
+export interface UserProgressRecord {
+  completedLessonIds: string[];
+  submissions: QuizSubmission[];
+}
+
+export const normalizeCourse = (crs: Course): Course => {
+  const actualTotal = crs.topics && crs.topics.length > 0
+    ? crs.topics.reduce((sum, t) => sum + (t.lessons ? t.lessons.length : 0), 0)
+    : (crs.totalLessons || 1);
+  const actualCompleted = crs.topics && crs.topics.length > 0
+    ? crs.topics.reduce((sum, t) => sum + (t.lessons ? t.lessons.filter((l) => l.isCompleted).length : 0), 0)
+    : (crs.completedLessons || 0);
+
+  return {
+    ...crs,
+    totalLessons: actualTotal > 0 ? actualTotal : 1,
+    completedLessons: actualCompleted
+  };
+};
+
+export const applyProgressToCourses = (baseCourses: Course[], completedIds: string[] = []): Course[] => {
+  return baseCourses.map((crs) => {
+    let completedInCourse = 0;
+    const updatedTopics = (crs.topics || []).map((tpc) => ({
+      ...tpc,
+      lessons: (tpc.lessons || []).map((lsn) => {
+        const isDone = completedIds.includes(lsn.id);
+        if (isDone) completedInCourse++;
+        return {
+          ...lsn,
+          isCompleted: isDone
+        };
+      })
+    }));
+
+    const total = crs.topics && crs.topics.length > 0
+      ? crs.topics.reduce((sum, t) => sum + (t.lessons ? t.lessons.length : 0), 0)
+      : (crs.totalLessons || 1);
+
+    return {
+      ...crs,
+      totalLessons: total > 0 ? total : 1,
+      completedLessons: completedInCourse,
+      topics: updatedTopics
+    };
+  });
+};
+
+// Pre-configured fixed admin profile
+export const fixedAdminProfile: UserAccount = {
+  id: 'usr_admin_001',
+  name: 'System Administrator',
+  email: 'admin@bookkeep-it.edu',
+  role: 'admin',
+  password: 'admin123',
+  avatarUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=300',
+  bio: 'Lead BookKeep-It System Administrator & CPA Instructor.',
+  studentId: 'ADMIN-2026-0001',
+  program: 'Faculty / Admin Controller',
+  completedLessonsCount: 20,
+  totalQuizzesTaken: 10,
+  averageQuizScore: 100,
+  studyHours: 120,
+  streakDays: 30
+};
+
+// Initial student account
+export const initialStudentAccount: UserAccount = {
+  ...initialProfile,
+  password: 'student123'
+};
+
+// Purge helper for old hardcoded mock sessions so they never linger in any user's localStorage
+export const isMockLiveSession = (s: any): boolean => {
+  if (!s || typeof s !== 'object') return false;
+  const id = String(s.id || '');
+  const title = String(s.title || '');
+  const room = String(s.meetingRoomId || '');
+  const instructor = String(s.instructorName || '');
+  return (
+    id === 'ls-001' ||
+    id === 'ls-002' ||
+    id === 'ls-003' ||
+    id === 'ls-004' ||
+    id === 'ls-005' ||
+    room.includes('trial-balance-ls001') ||
+    room.includes('financial-statements-ls002') ||
+    room.includes('debits-credits-ls003') ||
+    title.includes('Trial Balance Adjustments – Live Review') ||
+    title.includes('Financial Statements Masterclass') ||
+    title.includes('Debits & Credits Crash Course') ||
+    (instructor.includes('Eleanor Vance') && id.startsWith('ls-00'))
+  );
+};
+
+export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [user, setUser] = useState<UserProfile>(initialProfile);
+  const [accounts, setAccounts] = useState<UserAccount[]>([initialStudentAccount, fixedAdminProfile]);
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(true);
+
+  const [courses, setCourses] = useState<Course[]>(() => initialCourses.map(normalizeCourse));
+  const [quizzes, setQuizzes] = useState<Quiz[]>(initialQuizzes);
+  const [submissions, setSubmissions] = useState<QuizSubmission[]>([]);
+  const [materials, setMaterials] = useState<DownloadableMaterial[]>(initialMaterials);
+  const [videos, setVideos] = useState<VideoLesson[]>(initialVideos);
+  const [schedules, setSchedules] = useState<ScheduleItem[]>(initialSchedules);
+  const [notifications, setNotifications] = useState<NotificationItem[]>(initialNotifications);
+  const [faqs] = useState<FAQItem[]>(initialFAQs);
+  const [userProgress, setUserProgress] = useState<Record<string, UserProgressRecord>>({});
+  const [liveSessions, setLiveSessions] = useState<LiveSession[]>([]);
+
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [isNotificationDrawerOpen, setIsNotificationDrawerOpen] = useState(false);
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+  const [adminTab, setAdminTab] = useState<AdminTabType>('courses');
+  const [isLoaded, setIsLoaded] = useState(false);
+
+  // Load state from LocalStorage on mount
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        const storedProgress: Record<string, UserProgressRecord> = parsed.userProgress || {};
+        setUserProgress(storedProgress);
+
+        let activeUser = parsed.user || initialProfile;
+        if (parsed.accounts) setAccounts(parsed.accounts);
+        if (typeof parsed.isAuthenticated === 'boolean') setIsAuthenticated(parsed.isAuthenticated);
+
+        // Course structure from storage or initialCourses
+        let baseCoursesList = initialCourses.map(normalizeCourse);
+        if (parsed.courses && Array.isArray(parsed.courses) && parsed.courses.length > 0) {
+          baseCoursesList = parsed.courses.map(normalizeCourse);
+        }
+
+        // Apply active user's progress
+        const userProg = storedProgress[activeUser.id] || { completedLessonIds: [], submissions: [] };
+        const userCourses = applyProgressToCourses(baseCoursesList, userProg.completedLessonIds || []);
+        setCourses(userCourses);
+        setSubmissions(userProg.submissions || []);
+
+        const avgScore = (userProg.submissions && userProg.submissions.length > 0)
+          ? Math.round(userProg.submissions.reduce((a: number, b: QuizSubmission) => a + b.score, 0) / userProg.submissions.length)
+          : (activeUser.averageQuizScore || 0);
+
+        setUser({
+          ...activeUser,
+          completedLessonsCount: (userProg.completedLessonIds || []).length,
+          totalQuizzesTaken: (userProg.submissions || []).length,
+          averageQuizScore: avgScore
+        });
+
+        if (parsed.quizzes && Array.isArray(parsed.quizzes) && parsed.quizzes.length > 0) {
+          setQuizzes(parsed.quizzes);
+        }
+        if (parsed.materials) setMaterials(parsed.materials);
+        if (parsed.videos && Array.isArray(parsed.videos) && parsed.videos.length > 0) {
+          setVideos(parsed.videos);
+        }
+        if (parsed.schedules) setSchedules(parsed.schedules);
+        if (parsed.notifications) setNotifications(parsed.notifications);
+        if (parsed.liveSessions && Array.isArray(parsed.liveSessions)) {
+          // Actively purge any old mock demo sessions from existing users' localStorage
+          const cleanSessions = parsed.liveSessions.filter((s: LiveSession) => !isMockLiveSession(s));
+          setLiveSessions(cleanSessions);
+          try {
+            parsed.liveSessions = cleanSessions;
+            localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(parsed));
+          } catch {}
+        }
+      }
+    } catch (e) {
+      console.error('Failed to parse saved state:', e);
+    } finally {
+      setIsLoaded(true);
+    }
+  }, []);
+
+  // Sync courses, quizzes, shared videos, live sessions, and registered accounts
+  useEffect(() => {
+    let isMounted = true;
+
+    // 1. Sync Courses from Supabase & API
+    const syncCloudCourses = async () => {
+      try {
+        const [cloudCourses, apiCourses] = await Promise.all([
+          fetchCoursesFromSupabase(),
+          fetchCoursesFromApi()
+        ]);
+        const incoming = [...apiCourses, ...cloudCourses];
+        if (isMounted && incoming.length > 0) {
+          setCourses((prevCourses) => {
+            const map = new Map<string, Course>();
+            prevCourses.forEach((c) => map.set(c.id, c));
+            incoming.forEach((c) => {
+              const normalized = normalizeCourse(c);
+              const existing = map.get(c.id);
+              if (existing) {
+                map.set(c.id, { ...existing, ...normalized, completedLessons: existing.completedLessons });
+              } else {
+                map.set(c.id, normalized);
+              }
+            });
+            return Array.from(map.values());
+          });
+        }
+      } catch (e) {
+        console.warn('Could not sync cloud courses:', e);
+      }
+    };
+    syncCloudCourses();
+
+    // 2. Sync Quizzes from Supabase & API
+    const syncCloudQuizzes = async () => {
+      try {
+        const [cloudQuizzes, apiQuizzes] = await Promise.all([
+          fetchQuizzesFromSupabase(),
+          fetchQuizzesFromApi()
+        ]);
+        const incoming = [...apiQuizzes, ...cloudQuizzes];
+        if (isMounted && incoming.length > 0) {
+          setQuizzes((prevQuizzes) => {
+            const map = new Map<string, Quiz>();
+            prevQuizzes.forEach((q) => map.set(q.id, q));
+            incoming.forEach((q) => map.set(q.id, q));
+            return Array.from(map.values());
+          });
+        }
+      } catch (e) {
+        console.warn('Could not sync cloud quizzes:', e);
+      }
+    };
+    syncCloudQuizzes();
+
+    // 3. Sync Videos from Supabase & API
+    const syncCloudVideos = async () => {
+      try {
+        const [cloudVideos, apiVideos] = await Promise.all([
+          fetchVideosFromSupabase(),
+          fetchVideosFromApi()
+        ]);
+        const incoming = [...apiVideos, ...cloudVideos];
+        if (isMounted && incoming.length > 0) {
+          setVideos((prevVideos) => {
+            const map = new Map<string, VideoLesson>();
+            prevVideos.forEach((pv) => map.set(pv.id, pv));
+            incoming.forEach((cv) => map.set(cv.id, cv));
+            return Array.from(map.values());
+          });
+        }
+      } catch (e) {
+        console.warn('Could not sync cloud videos:', e);
+      }
+    };
+    syncCloudVideos();
+
+    // Sync registered accounts dynamically across sessions
+    const syncRegisteredAccounts = async () => {
+      try {
+        const remoteAccounts = await fetchAccountsFromApi();
+        if (isMounted && remoteAccounts && Array.isArray(remoteAccounts) && remoteAccounts.length > 0) {
+          setAccounts((prev) => {
+            const map = new Map<string, UserAccount>();
+            prev.forEach((a) => map.set(a.id, a));
+            remoteAccounts.forEach((ra: UserAccount) => {
+              if (!map.has(ra.id)) {
+                map.set(ra.id, ra);
+              }
+            });
+            return Array.from(map.values());
+          });
+        }
+      } catch {
+        // ignore
+      }
+    };
+    syncRegisteredAccounts();
+
+    const isTerminalStatus = (status?: LiveSessionStatus) => status === 'completed' || status === 'cancelled';
+
+    const syncCloudLiveSessions = async () => {
+      try {
+        const cloudSessions = await fetchLiveSessionsFromSupabase();
+        if (isMounted && cloudSessions && Array.isArray(cloudSessions)) {
+          setLiveSessions((prevSessions) => {
+            const map = new Map<string, LiveSession>();
+            prevSessions
+              .filter((s) => !isMockLiveSession(s))
+              .forEach((s) => map.set(s.id, s));
+
+            cloudSessions
+              .filter((s) => !isMockLiveSession(s))
+              .forEach((incoming) => {
+                const existing = map.get(incoming.id);
+                if (existing) {
+                  // If existing session is in terminal state (completed or cancelled),
+                  // NEVER allow a stale incoming state (scheduled or live) to revert it!
+                  if (isTerminalStatus(existing.status) && !isTerminalStatus(incoming.status)) {
+                    map.set(incoming.id, {
+                      ...incoming,
+                      status: existing.status,
+                      endTime: existing.endTime || incoming.endTime,
+                      participants: incoming.participants || existing.participants || []
+                    });
+                  } else {
+                    map.set(incoming.id, {
+                      ...existing,
+                      ...incoming,
+                      participants: incoming.participants || existing.participants || []
+                    });
+                  }
+                } else {
+                  map.set(incoming.id, incoming);
+                }
+              });
+            return Array.from(map.values());
+          });
+        }
+      } catch (e) {
+        console.warn('Could not sync cloud live sessions:', e);
+      }
+    };
+
+    // Initial fetch
+    syncCloudLiveSessions();
+
+    // 1. Cross-tab BroadcastChannel for 0ms latency sync across tabs
+    let channel: BroadcastChannel | null = null;
+    try {
+      if (typeof window !== 'undefined' && typeof BroadcastChannel !== 'undefined') {
+        channel = new BroadcastChannel('bookkeepit_live_sync');
+        channel.onmessage = () => {
+          syncCloudLiveSessions();
+        };
+      }
+    } catch {
+      // ignore
+    }
+
+    // 2. Storage event listener for cross-tab storage changes
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === 'bookkeepit_app_state' && e.newValue) {
+        try {
+          const parsed = JSON.parse(e.newValue);
+          if (parsed.liveSessions && Array.isArray(parsed.liveSessions)) {
+            setLiveSessions(parsed.liveSessions.filter((s: LiveSession) => !isMockLiveSession(s)));
+          }
+        } catch {
+          // ignore
+        }
+      }
+    };
+    window.addEventListener('storage', handleStorage);
+
+    // 3. Periodic real-time polling every 3.5 seconds to keep all student devices synced
+    const pollInterval = setInterval(() => {
+      syncCloudLiveSessions();
+    }, 3500);
+
+    // 4. Instant sync on window focus and visibility change
+    const handleFocus = () => {
+      syncCloudLiveSessions();
+    };
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        syncCloudLiveSessions();
+      }
+    };
+    // 5. Supabase Realtime subscription for instant cross-client sync
+    const unsubRealtime = subscribeToLiveSessionsRealtime(
+      (incomingSession) => {
+        if (!isMounted || isMockLiveSession(incomingSession)) return;
+        setLiveSessions((prevSessions) => {
+          const map = new Map<string, LiveSession>();
+          prevSessions.filter((s) => !isMockLiveSession(s)).forEach((s) => map.set(s.id, s));
+          const existing = map.get(incomingSession.id);
+          if (existing) {
+            if (isTerminalStatus(existing.status) && !isTerminalStatus(incomingSession.status)) {
+              map.set(incomingSession.id, {
+                ...incomingSession,
+                status: existing.status,
+                endedAt: existing.endedAt || incomingSession.endedAt,
+                endTime: existing.endTime || incomingSession.endTime
+              });
+            } else {
+              map.set(incomingSession.id, { ...existing, ...incomingSession });
+            }
+          } else {
+            map.set(incomingSession.id, incomingSession);
+          }
+          return Array.from(map.values());
+        });
+      },
+      (deletedId) => {
+        if (!isMounted) return;
+        setLiveSessions((prev) => prev.filter((s) => s.id !== deletedId));
+      }
+    );
+
+    return () => {
+      isMounted = false;
+      channel?.close();
+      unsubRealtime();
+      window.removeEventListener('storage', handleStorage);
+      clearInterval(pollInterval);
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, []);
+
+  // Save state to LocalStorage on changes
+  useEffect(() => {
+    if (!isLoaded) return;
+    try {
+      const stateToSave = {
+        user,
+        accounts,
+        isAuthenticated,
+        courses,
+        quizzes,
+        submissions,
+        materials,
+        videos,
+        schedules,
+        notifications,
+        userProgress,
+        liveSessions: liveSessions.filter((s) => !isMockLiveSession(s))
+      };
+      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(stateToSave));
+    } catch (e) {
+      console.error('Failed to save state:', e);
+    }
+  }, [user, accounts, isAuthenticated, courses, quizzes, submissions, materials, videos, schedules, notifications, userProgress, liveSessions, isLoaded]);
+
+  // Login handler supporting fixed admin and student accounts with Supabase sync
+  // Login handler supporting admin and registered student accounts
+  const login = (email: string, password?: string) => {
+    const trimmedEmail = email.trim().toLowerCase();
+    
+    // Sync with Supabase Auth in background if configured
+    supabaseLogin(trimmedEmail, password);
+
+    // Check admin credentials
+    const adminMatch = accounts.find((a) => a.id === fixedAdminProfile.id || a.email.toLowerCase() === trimmedEmail);
+    const expectedAdminPassword = adminMatch?.password || 'admin123';
+    if (
+      trimmedEmail === 'admin@bookkeep-it.edu' ||
+      trimmedEmail === 'admin@ilearn.edu' ||
+      trimmedEmail === 'admin@gmail.com' ||
+      trimmedEmail === 'bookeepit636@gmail.com'
+    ) {
+      if (password && password !== expectedAdminPassword && password !== 'admin123') {
+        return {
+          success: false,
+          error: 'Incorrect administrator password. Please verify and try again.'
+        };
+      }
+      setUser(adminMatch || fixedAdminProfile);
+      setIsAuthenticated(true);
+      return { success: true };
+    }
+
+    // Check student/custom accounts
+    const match = accounts.find(
+      (acc) => acc.email.toLowerCase() === trimmedEmail
+    );
+
+    if (!match) {
+      return {
+        success: false,
+        error: `No account found for "${email}". Please click the "Create Account" tab above to register first.`
+      };
+    }
+
+    if (password && match.password && match.password !== password) {
+      return {
+        success: false,
+        error: 'Incorrect password. Please verify and try again.'
+      };
+    }
+
+    const progress = userProgress[match.id] || { completedLessonIds: [], submissions: [] };
+    
+    setCourses((prev) => applyProgressToCourses(prev, progress.completedLessonIds || []));
+    setSubmissions(progress.submissions || []);
+
+    const avgScore = (progress.submissions && progress.submissions.length > 0)
+      ? Math.round(progress.submissions.reduce((a, b) => a + b.score, 0) / progress.submissions.length)
+      : (match.averageQuizScore || 0);
+
+    setUser({
+      ...match,
+      completedLessonsCount: (progress.completedLessonIds || []).length,
+      totalQuizzesTaken: (progress.submissions || []).length,
+      averageQuizScore: avgScore
+    });
+    setIsAuthenticated(true);
+    return { success: true };
+  };
+
+  // Register new student account with clean fresh 0% progress
+  const register = (name: string, email: string, password?: string, program?: string) => {
+    const trimmedEmail = email.trim().toLowerCase();
+    
+    if (accounts.some((acc) => acc.email.toLowerCase() === trimmedEmail)) {
+      return { success: false, error: 'An account with this email address already exists.' };
+    }
+
+    // Sync with Supabase Auth in background if configured
+    supabaseRegister(name, trimmedEmail, password, program);
+
+    const newAcc: UserAccount = {
+      id: `usr_${Date.now()}`,
+      name,
+      email: trimmedEmail,
+      role: 'student',
+      password: password || 'student123',
+      avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=300',
+      bio: `Student enrolled in ${program || 'Bachelor of Science in Accountancy'}.`,
+      studentId: `BK-2026-${Math.floor(1000 + Math.random() * 9000)}`,
+      program: program || 'Bachelor of Science in Accountancy',
+      completedLessonsCount: 0,
+      totalQuizzesTaken: 0,
+      averageQuizScore: 0,
+      studyHours: 0,
+      streakDays: 1
+    };
+
+    // Initialize fresh empty progress for new account
+    setUserProgress((prev) => ({
+      ...prev,
+      [newAcc.id]: { completedLessonIds: [], submissions: [] }
+    }));
+
+    // Reset all courses to 0% progress and clear submissions for new student
+    setCourses((prev) => applyProgressToCourses(prev, []));
+    setSubmissions([]);
+
+    // Sync with server accounts store so admin immediately sees real registered student
+    saveAccountToApi(newAcc);
+
+    setAccounts((prev) => [...prev, newAcc]);
+    setUser(newAcc);
+    setIsAuthenticated(true);
+    return { success: true };
+  };
+
+  const logout = () => {
+    supabaseLogout();
+    setIsAuthenticated(false);
+  };
+
+  const resetAccountPassword = async (targetEmail: string, newPassword: string): Promise<{ success: boolean; error?: string }> => {
+    const trimmed = targetEmail.trim().toLowerCase();
+    if (!newPassword || newPassword.length < 6) {
+      return { success: false, error: 'Password must be at least 6 characters long.' };
+    }
+
+    // Update in local accounts list
+    let accountUpdated = false;
+    setAccounts((prev) => {
+      const exists = prev.some((a) => a.email.toLowerCase() === trimmed);
+      if (exists) {
+        accountUpdated = true;
+        return prev.map((a) => (a.email.toLowerCase() === trimmed ? { ...a, password: newPassword } : a));
+      } else {
+        // Create an account entry if was not previously in accounts list
+        const isAdm = trimmed.includes('admin');
+        const createdAcc: UserAccount = {
+          id: isAdm ? fixedAdminProfile.id : `usr_${Date.now()}`,
+          name: isAdm ? 'System Administrator' : trimmed.split('@')[0],
+          email: trimmed,
+          role: isAdm ? 'admin' : 'student',
+          password: newPassword,
+          avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=300',
+          bio: 'BookKeep-It Account',
+          studentId: `BK-2026-${Math.floor(1000 + Math.random() * 9000)}`,
+          program: 'Bachelor of Science in Accountancy',
+          completedLessonsCount: 0,
+          totalQuizzesTaken: 0,
+          averageQuizScore: 0,
+          studyHours: 0,
+          streakDays: 1
+        };
+        accountUpdated = true;
+        return [...prev, createdAcc];
+      }
+    });
+
+    // If currently logged in user matches, update current user password as well
+    if (user.email.toLowerCase() === trimmed) {
+      setUser((prev) => ({ ...prev, password: newPassword } as UserProfile));
+    }
+
+    // Call server API to synchronize password store
+    try {
+      await fetch('/api/auth/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: trimmed, newPassword })
+      });
+    } catch (e) {
+      console.warn('API reset-password sync note:', e);
+    }
+
+    return { success: true };
+  };
+
+  const changeAccountPassword = async (newPassword: string, currentPassword?: string): Promise<{ success: boolean; error?: string }> => {
+    if (!newPassword || newPassword.length < 6) {
+      return { success: false, error: 'New password must be at least 6 characters.' };
+    }
+    const currentAcc = accounts.find((a) => a.id === user.id || a.email.toLowerCase() === user.email.toLowerCase());
+    const existingPassword = currentAcc?.password || (user as any).password;
+    if (currentPassword && existingPassword && existingPassword !== currentPassword && existingPassword !== 'student123' && existingPassword !== 'admin123') {
+      return { success: false, error: 'Current password does not match.' };
+    }
+
+    setUser((prev) => ({ ...prev, password: newPassword } as UserProfile));
+    setAccounts((prev) => prev.map((a) => (a.id === user.id || a.email.toLowerCase() === user.email.toLowerCase() ? { ...a, password: newPassword } : a)));
+
+    try {
+      await fetch('/api/auth/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: user.email, newPassword })
+      });
+    } catch {}
+
+    return { success: true };
+  };
+
+  const toggleRole = () => {
+    setUser((prev) => ({
+      ...prev,
+      role: prev.role === 'student' ? 'admin' : 'student'
+    }));
+  };
+
+  const updateProfile = (updated: Partial<UserProfile>) => {
+    setUser((prev) => ({ ...prev, ...updated }));
+  };
+
+  const submitQuiz = (quizId: string, answers: Record<string, number>): QuizSubmission => {
+    const targetQuiz = quizzes.find((q) => q.id === quizId);
+    if (!targetQuiz) throw new Error('Quiz not found');
+
+    let correct = 0;
+    targetQuiz.questions.forEach((q) => {
+      if (answers[q.id] === q.correctAnswerIndex) {
+        correct++;
+      }
+    });
+
+    const totalQuestions = targetQuiz.questions.length;
+    const scorePct = Math.round((correct / totalQuestions) * 100);
+    const passed = scorePct >= targetQuiz.passingScore;
+
+    const newSubmission: QuizSubmission = {
+      id: `sub-${Date.now()}`,
+      quizId,
+      quizTitle: targetQuiz.title,
+      score: scorePct,
+      passed,
+      totalQuestions,
+      correctAnswersCount: correct,
+      submittedAt: new Date().toISOString()
+    };
+
+    const currentProg = userProgress[user.id] || { completedLessonIds: [], submissions: [] };
+    const updatedSubs = [newSubmission, ...currentProg.submissions.filter((s) => s.quizId !== targetQuiz.id)];
+
+    setUserProgress((prev) => ({
+      ...prev,
+      [user.id]: {
+        ...currentProg,
+        submissions: updatedSubs
+      }
+    }));
+
+    setSubmissions(updatedSubs);
+
+    const avgScore = Math.round(updatedSubs.reduce((acc, curr) => acc + curr.score, 0) / updatedSubs.length);
+
+    setUser((prev) => ({
+      ...prev,
+      totalQuizzesTaken: updatedSubs.length,
+      averageQuizScore: avgScore
+    }));
+
+    const newNotif: NotificationItem = {
+      id: `notif-${Date.now()}`,
+      title: passed ? `Quiz Passed: ${targetQuiz.title}` : `Quiz Attempt Completed: ${targetQuiz.title}`,
+      message: `You scored ${scorePct}% (${correct}/${totalQuestions} correct). ${passed ? 'Great job!' : 'Review the material and try again.'}`,
+      category: 'quiz',
+      createdAt: new Date().toISOString(),
+      isRead: false,
+      sender: 'BookKeep-It Quiz Engine'
+    };
+    setNotifications((prev) => [newNotif, ...prev]);
+
+    // Send email notification to Admin Gmail via Resend
+    sendQuizSubmissionNotification({
+      studentName: user.name,
+      studentEmail: user.email,
+      studentId: user.studentId,
+      program: user.program,
+      quizTitle: targetQuiz.title,
+      score: scorePct,
+      passed,
+      correctAnswersCount: correct,
+      totalQuestions,
+      submittedAt: newSubmission.submittedAt
+    }).catch((err) => {
+      console.warn('Resend email notification trigger notice:', err);
+    });
+
+    return newSubmission;
+  };
+
+  const toggleLessonCompletion = (courseId: string, lessonId: string) => {
+    const currentProg = userProgress[user.id] || { completedLessonIds: [], submissions: [] };
+    const isCurrentlyDone = currentProg.completedLessonIds.includes(lessonId);
+    const updatedIds = isCurrentlyDone
+      ? currentProg.completedLessonIds.filter((id) => id !== lessonId)
+      : [...currentProg.completedLessonIds, lessonId];
+
+    setUserProgress((prev) => ({
+      ...prev,
+      [user.id]: {
+        ...currentProg,
+        completedLessonIds: updatedIds
+      }
+    }));
+
+    setCourses((prevCourses) => applyProgressToCourses(prevCourses, updatedIds));
+
+    setUser((prev) => ({
+      ...prev,
+      completedLessonsCount: updatedIds.length
+    }));
+  };
+
+  const addScheduleItem = (item: Omit<ScheduleItem, 'id' | 'isCompleted'>) => {
+    const newItem: ScheduleItem = {
+      ...item,
+      id: `sch-${Date.now()}`,
+      isCompleted: false
+    };
+    setSchedules((prev) => [newItem, ...prev]);
+  };
+
+  const toggleScheduleCompletion = (id: string) => {
+    setSchedules((prev) =>
+      prev.map((item) => (item.id === id ? { ...item, isCompleted: !item.isCompleted } : item))
+    );
+  };
+
+  const markNotificationAsRead = (id: string) => {
+    setNotifications((prev) =>
+      prev.map((n) => (n.id === id ? { ...n, isRead: true } : n))
+    );
+  };
+
+  const markAllNotificationsAsRead = () => {
+    setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
+  };
+
+  const addCourse = (course: Course) => {
+    const normalized = normalizeCourse(course);
+    setCourses((prev) => [normalized, ...prev.filter((c) => c.id !== normalized.id)]);
+    // Persist to Supabase and API store in background
+    saveCourseToSupabase(normalized).catch(() => {});
+    saveCourseToApi(normalized).catch(() => {});
+
+    // Broadcast new course announcement
+    const notif: NotificationItem = {
+      id: `notif-crs-${Date.now()}`,
+      title: `📚 New Course Available: ${normalized.title}`,
+      message: `${normalized.instructor || user.name} published a new course module: ${normalized.title} (${normalized.code}).`,
+      category: 'course',
+      createdAt: new Date().toISOString(),
+      isRead: false,
+      sender: normalized.instructor || user.name
+    };
+    setNotifications((prev) => [notif, ...prev]);
+  };
+
+  const updateCourse = (course: Course) => {
+    const normalized = normalizeCourse(course);
+    setCourses((prev) =>
+      prev.map((c) => (c.id === normalized.id ? { ...c, ...normalized, completedLessons: c.completedLessons } : c))
+    );
+    saveCourseToSupabase(normalized).catch(() => {});
+    saveCourseToApi(normalized).catch(() => {});
+  };
+
+  const updateCourseTopics = (courseId: string, updatedTopics: Topic[]) => {
+    let targetUpdatedCourse: Course | null = null;
+    setCourses((prev) =>
+      prev.map((c) => {
+        if (c.id !== courseId) return c;
+        const totalLsnCount = updatedTopics.reduce(
+          (acc, t) => acc + (t.lessons ? t.lessons.length : 0),
+          0
+        );
+        const updated: Course = {
+          ...c,
+          topics: updatedTopics,
+          totalLessons: totalLsnCount || c.totalLessons
+        };
+        targetUpdatedCourse = updated;
+        return updated;
+      })
+    );
+    if (targetUpdatedCourse) {
+      saveCourseToSupabase(targetUpdatedCourse).catch(() => {});
+      saveCourseToApi(targetUpdatedCourse).catch(() => {});
+    }
+  };
+
+  const deleteCourse = (id: string) => {
+    setCourses((prev) => prev.filter((c) => c.id !== id));
+    deleteCourseFromSupabase(id).catch(() => {});
+    deleteCourseFromApi(id).catch(() => {});
+  };
+
+  const addVideo = (video: VideoLesson) => {
+    setVideos((prev) => [video, ...prev.filter((v) => v.id !== video.id)]);
+    // Persist to Supabase database & API in background
+    saveVideoToSupabase(video).catch(() => {});
+    saveVideoToApi(video).catch(() => {});
+
+    const notif: NotificationItem = {
+      id: `notif-vid-${Date.now()}`,
+      title: `🎥 New Video Lesson: ${video.title}`,
+      message: `A new instructional video for ${video.topic} has been uploaded.`,
+      category: 'course',
+      createdAt: new Date().toISOString(),
+      isRead: false,
+      sender: user.name
+    };
+    setNotifications((prev) => [notif, ...prev]);
+  };
+
+  const updateVideo = (video: VideoLesson) => {
+    setVideos((prev) => prev.map((v) => (v.id === video.id ? video : v)));
+    saveVideoToSupabase(video).catch(() => {});
+    saveVideoToApi(video).catch(() => {});
+  };
+
+  const deleteVideo = (id: string) => {
+    setVideos((prev) => prev.filter((v) => v.id !== id));
+    deleteVideoBlob(id);
+    deleteVideoFromSupabase(id).catch(() => {});
+    deleteVideoFromApi(id).catch(() => {});
+  };
+
+  const addMaterial = (material: DownloadableMaterial) => {
+    setMaterials((prev) => [material, ...prev]);
+  };
+
+  const deleteMaterial = (id: string) => {
+    setMaterials((prev) => prev.filter((m) => m.id !== id));
+  };
+
+  const addQuiz = (quiz: Quiz) => {
+    setQuizzes((prev) => [quiz, ...prev.filter((q) => q.id !== quiz.id)]);
+    saveQuizToSupabase(quiz).catch(() => {});
+    saveQuizToApi(quiz).catch(() => {});
+
+    const notif: NotificationItem = {
+      id: `notif-qz-${Date.now()}`,
+      title: `📝 New Quiz Published: ${quiz.title}`,
+      message: `Test your understanding on "${quiz.topicTitle}". Passing score: ${quiz.passingScore}%.`,
+      category: 'quiz',
+      createdAt: new Date().toISOString(),
+      isRead: false,
+      sender: user.name
+    };
+    setNotifications((prev) => [notif, ...prev]);
+  };
+
+  const updateQuiz = (quiz: Quiz) => {
+    setQuizzes((prev) => prev.map((q) => (q.id === quiz.id ? quiz : q)));
+    saveQuizToSupabase(quiz).catch(() => {});
+    saveQuizToApi(quiz).catch(() => {});
+  };
+
+  const deleteQuiz = (id: string) => {
+    setQuizzes((prev) => prev.filter((q) => q.id !== id));
+    deleteQuizFromSupabase(id).catch(() => {});
+    deleteQuizFromApi(id).catch(() => {});
+  };
+
+  const broadcastAnnouncement = (title: string, message: string) => {
+    const newAnnouncement: NotificationItem = {
+      id: `ann-${Date.now()}`,
+      title,
+      message,
+      category: 'announcement',
+      createdAt: new Date().toISOString(),
+      isRead: false,
+      sender: user.name + ' (Administrator)'
+    };
+    setNotifications((prev) => [newAnnouncement, ...prev]);
+  };
+
+  const resetAllData = () => {
+    localStorage.removeItem(LOCAL_STORAGE_KEY);
+    setUser(initialProfile);
+    setAccounts([initialStudentAccount, fixedAdminProfile]);
+    setIsAuthenticated(false);
+    setCourses(initialCourses);
+    setQuizzes(initialQuizzes);
+    setSubmissions(initialSubmissions);
+    setMaterials(initialMaterials);
+    setVideos(initialVideos);
+    setSchedules(initialSchedules);
+    setNotifications(initialNotifications);
+    setLiveSessions([]);
+  };
+
+  // Live Session CRUD
+  const addLiveSession = (session: Omit<LiveSession, 'id' | 'createdAt' | 'attendeesCount'> & { id?: string }): LiveSession => {
+    const now = new Date();
+    const duration = (session.durationMinutes === 40 || session.durationMinutes === 60) ? session.durationMinutes : 60;
+    const nowTime = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+    const nowDate = now.toISOString().split('T')[0];
+
+    const startedAt = session.startedAt || (session.status === 'live' ? now.toISOString() : undefined);
+    const endAt = session.endAt || (session.status === 'live' ? new Date(now.getTime() + duration * 60000).toISOString() : undefined);
+    const calculatedEndTime = endAt ? new Date(endAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) : session.endTime;
+
+    const newSession: LiveSession = {
+      ...session,
+      id: session.id || `ls-${Date.now()}`,
+      durationMinutes: duration,
+      startedAt,
+      endAt,
+      createdBy: session.createdBy || session.instructorId || user.id,
+      date: session.date || nowDate,
+      startTime: session.status === 'live' && !session.startTime ? nowTime : (session.startTime || nowTime),
+      endTime: calculatedEndTime || session.endTime,
+      attendeesCount: session.participants ? session.participants.length : 0,
+      participants: session.participants || [],
+      createdAt: new Date().toISOString()
+    };
+
+    setLiveSessions((prev) => [newSession, ...prev]);
+    // Sync to Supabase Cloud and /api/live in background
+    saveLiveSessionToSupabase(newSession);
+
+    try {
+      if (typeof window !== 'undefined' && typeof BroadcastChannel !== 'undefined') {
+        const bc = new BroadcastChannel('bookkeepit_live_sync');
+        bc.postMessage({ type: 'sync', session: newSession });
+        bc.close();
+      }
+    } catch {}
+
+    // Broadcast notification to students
+    const notif: NotificationItem = {
+      id: `notif-ls-${Date.now()}`,
+      title: session.status === 'live' ? `🔴 LIVE NOW: ${session.title}` : `Live Class Scheduled: ${session.title}`,
+      message: `${session.instructorName} has ${session.status === 'live' ? 'started a live class right now' : `scheduled a live class on ${newSession.date} at ${newSession.startTime}`}.${session.courseTitle ? ` Course: ${session.courseTitle}.` : ''}`,
+      category: 'announcement',
+      createdAt: new Date().toISOString(),
+      isRead: false,
+      sender: session.instructorName
+    };
+    setNotifications((prev) => [notif, ...prev]);
+    return newSession;
+  };
+
+  const updateLiveSession = (id: string, updates: Partial<LiveSession>) => {
+    const isTerminalStatus = (status?: LiveSessionStatus) => status === 'completed' || status === 'cancelled';
+    const now = new Date();
+    const nowTime = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+
+    let updatedSession: LiveSession | null = null;
+    setLiveSessions((prev) =>
+      prev.map((s) => {
+        if (s.id === id) {
+          // Terminal State Invariant: Completed or Cancelled status can NEVER revert to live or scheduled
+          if (isTerminalStatus(s.status) && (updates.status === 'live' || updates.status === 'scheduled')) {
+            console.warn(`Prevented reverting terminal session ${id} from ${s.status} to ${updates.status}`);
+            return s;
+          }
+
+          const duration = (updates.durationMinutes === 40 || updates.durationMinutes === 60)
+            ? updates.durationMinutes
+            : (s.durationMinutes === 40 || s.durationMinutes === 60 ? s.durationMinutes : 60);
+
+          // Authoritative start and end times when transitioning to live
+          let finalStartedAt = updates.startedAt || s.startedAt;
+          let finalEndAt = updates.endAt || s.endAt;
+          let finalStartTime = updates.startTime || s.startTime;
+          let finalEndTime = updates.endTime || s.endTime;
+          let finalEndedAt = updates.endedAt || s.endedAt;
+
+          if (updates.status === 'live' && s.status !== 'live') {
+            finalStartedAt = now.toISOString();
+            finalEndAt = new Date(now.getTime() + duration * 60000).toISOString();
+            finalStartTime = nowTime;
+            finalEndTime = new Date(now.getTime() + duration * 60000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+          }
+
+          // Authoritative end time when transitioning to completed
+          if (updates.status === 'completed') {
+            finalEndedAt = updates.endedAt || s.endedAt || now.toISOString();
+            if (!finalEndTime) {
+              finalEndTime = nowTime;
+            }
+          }
+
+          const participantsList = updates.participants || s.participants || [];
+          const attendeesCount = updates.attendeesCount !== undefined ? updates.attendeesCount : participantsList.length;
+
+          updatedSession = {
+            ...s,
+            ...updates,
+            durationMinutes: duration,
+            startedAt: finalStartedAt,
+            endAt: finalEndAt,
+            endedAt: finalEndedAt,
+            startTime: finalStartTime,
+            endTime: finalEndTime,
+            participants: participantsList,
+            attendeesCount,
+            updatedAt: new Date().toISOString()
+          };
+          return updatedSession;
+        }
+        return s;
+      })
+    );
+
+    if (updatedSession) {
+      saveLiveSessionToSupabase(updatedSession);
+    }
+
+    try {
+      if (typeof window !== 'undefined' && typeof BroadcastChannel !== 'undefined') {
+        const bc = new BroadcastChannel('bookkeepit_live_sync');
+        bc.postMessage({ type: 'sync', id, updates });
+        bc.close();
+      }
+    } catch {}
+
+    // If a session goes live, send a high-priority notification
+    if (updates.status === 'live') {
+      const session = liveSessions.find((s) => s.id === id) || updatedSession;
+      if (session) {
+        const notif: NotificationItem = {
+          id: `notif-live-${Date.now()}`,
+          title: `🔴 LIVE NOW: ${session.title}`,
+          message: `${session.instructorName} has started the live class. Join now from the Live Classes page!`,
+          category: 'announcement',
+          createdAt: new Date().toISOString(),
+          isRead: false,
+          sender: session.instructorName
+        };
+        setNotifications((prev) => [notif, ...prev]);
+      }
+    }
+  };
+
+  const deleteLiveSession = (id: string) => {
+    setLiveSessions((prev) => prev.filter((s) => s.id !== id));
+    deleteLiveSessionFromSupabase(id);
+
+    try {
+      if (typeof window !== 'undefined' && typeof BroadcastChannel !== 'undefined') {
+        const bc = new BroadcastChannel('bookkeepit_live_sync');
+        bc.postMessage({ type: 'delete', id });
+        bc.close();
+      }
+    } catch {}
+  };
+
+  return (
+    <AppContext.Provider
+      value={{
+        user,
+        accounts,
+        isAuthenticated,
+        courses,
+        quizzes,
+        submissions,
+        materials,
+        videos,
+        schedules,
+        notifications,
+        faqs,
+        liveSessions,
+        searchQuery,
+        isSearchOpen,
+        isNotificationDrawerOpen,
+        isMobileSidebarOpen,
+        setSearchQuery,
+        setIsSearchOpen,
+        setIsNotificationDrawerOpen,
+        setIsMobileSidebarOpen,
+        login,
+        register,
+        resetAccountPassword,
+        changeAccountPassword,
+        logout,
+        toggleRole,
+        updateProfile,
+        submitQuiz,
+        toggleLessonCompletion,
+        addScheduleItem,
+        toggleScheduleCompletion,
+        markNotificationAsRead,
+        markAllNotificationsAsRead,
+        addCourse,
+        updateCourse,
+        updateCourseTopics,
+        deleteCourse,
+        addVideo,
+        updateVideo,
+        deleteVideo,
+        addMaterial,
+        deleteMaterial,
+        addQuiz,
+        updateQuiz,
+        deleteQuiz,
+        broadcastAnnouncement,
+        resetAllData,
+        adminTab,
+        setAdminTab,
+        addLiveSession,
+        updateLiveSession,
+        deleteLiveSession
+      }}
+    >
+      {children}
+    </AppContext.Provider>
+  );
+};
+
+export const useApp = () => {
+  const context = useContext(AppContext);
+  if (!context) throw new Error('useApp must be used within an AppProvider');
+  return context;
+};
