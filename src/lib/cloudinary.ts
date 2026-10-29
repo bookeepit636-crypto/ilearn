@@ -1,4 +1,5 @@
 // Cloudinary Client & Upload Helper
+import { compressVideo, CompressionResult } from './videoCompression';
 
 const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME || 'lnfbecmj';
 const uploadPreset = process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET || 'ml_default';
@@ -16,9 +17,9 @@ export const uploadToCloudinary = async (
     return URL.createObjectURL(file);
   }
 
-  // Cloudinary free tier browser unsigned upload limit is ~40-100MB depending on preset.
-  // We allow files up to 60MB to upload to Cloudinary.
-  const MAX_CLOUDINARY_SIZE = 60 * 1024 * 1024; // 60MB
+  // Cloudinary free tier browser unsigned upload limit is ~100MB.
+  // We allow files up to 100MB to upload directly.
+  const MAX_CLOUDINARY_SIZE = 100 * 1024 * 1024; // 100MB
   if (file.size > MAX_CLOUDINARY_SIZE) {
     console.warn(
       `File size (${(file.size / (1024 * 1024)).toFixed(1)}MB) exceeds maximum cloud upload threshold. Using local stream.`
@@ -50,10 +51,42 @@ export const uploadToCloudinary = async (
     }
 
     const data = await response.json();
-    return data.secure_url || URL.createObjectURL(file);
+    let secureUrl = data.secure_url || '';
+
+    // Apply Cloudinary dynamic streaming optimizations (auto quality, compact codec, 720p limit)
+    if (secureUrl && isVideoFile && secureUrl.includes('/video/upload/')) {
+      secureUrl = secureUrl.replace('/video/upload/', '/video/upload/q_auto,vc_auto,w_1280,c_limit/');
+    }
+
+    return secureUrl || URL.createObjectURL(file);
   } catch (err) {
     console.warn('Cloudinary upload network/CORS error, using local fallback:', err);
     return URL.createObjectURL(file);
   }
 };
+
+/**
+ * Uploads a video file with automatic in-browser compression if larger than 25MB.
+ * Returns the final streaming URL and compression metrics.
+ */
+export const uploadVideoWithAutoCompression = async (
+  file: File,
+  onProgress?: (percent: number, message: string) => void
+): Promise<{ url: string; compressionResult: CompressionResult }> => {
+  // Compress in browser if > 25MB
+  const compressionResult = await compressVideo(file, {
+    thresholdSizeMb: 25,
+    maxDimension: 1280,
+    videoBitrate: 1_200_000,
+    playbackRate: 2.0,
+    onProgress
+  });
+
+  onProgress?.(85, 'Uploading to Cloudinary...');
+  const uploadedUrl = await uploadToCloudinary(compressionResult.file, 'video');
+  onProgress?.(100, 'Upload complete!');
+
+  return { url: uploadedUrl, compressionResult };
+};
+
 

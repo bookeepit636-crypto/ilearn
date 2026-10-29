@@ -35,13 +35,14 @@ import {
   Users,
   Video,
   X,
+  Sparkles,
   ChevronDown,
   ChevronUp,
   XCircle
 } from 'lucide-react';
 import { useApp, isMockLiveSession } from '@/context/AppContext';
 import { Course, DownloadableMaterial, Lesson, LiveSession, LiveSessionStatus, Quiz, QuizQuestion, Topic, UserAccount, UserProfile, VideoLesson } from '@/types';
-import { uploadToCloudinary } from '@/lib/cloudinary';
+import { uploadToCloudinary, uploadVideoWithAutoCompression } from '@/lib/cloudinary';
 import { saveVideoBlob, deleteVideoBlob, generateVideoThumbnail } from '@/lib/videoStorage';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -224,6 +225,8 @@ export default function AdminPage() {
   const [lessonVideoFile, setLessonVideoFile] = useState<File | null>(null);
   const [isMatUploading, setIsMatUploading] = useState(false);
   const [videoFileWarning, setVideoFileWarning] = useState('');
+  const [vidCompressionMsg, setVidCompressionMsg] = useState('');
+  const [vidCompressionStats, setVidCompressionStats] = useState('');
 
   // Announcement State
   const [annTitle, setAnnTitle] = useState('');
@@ -243,7 +246,9 @@ export default function AdminPage() {
     setVidErrorMsg('');
     setUploadedVideoFile(file);
     setUploadedVideoName(file.name);
-    setVidUploadProgress(15);
+    setVidUploadProgress(10);
+    setVidCompressionMsg('Analyzing video file...');
+    setVidCompressionStats('');
 
     // Auto extract real thumbnail frame
     try {
@@ -256,23 +261,26 @@ export default function AdminPage() {
     // Instantly create local stream so user has immediate preview
     const localStreamUrl = URL.createObjectURL(file);
     setVidUrl(localStreamUrl);
-    setVidUploadProgress(40);
-
-    const sizeMb = file.size / (1024 * 1024);
-    if (file.size > 100 * 1024 * 1024) {
-      setVidUploadProgress(100);
-      setVideoFileWarning(
-        `This file is ${sizeMb.toFixed(1)}MB, which exceeds Cloudinary's 100MB free cloud upload limit. It is saved in high-speed local browser storage. For global mobile streaming, consider using YouTube Unlisted link.`
-      );
-      return;
-    }
 
     setVideoFileWarning('');
     setIsVidUploading(true);
-    setVidUploadProgress(65);
+
     try {
-      const url = await uploadToCloudinary(file, 'video');
-      setVidUploadProgress(95);
+      const { url, compressionResult } = await uploadVideoWithAutoCompression(
+        file,
+        (pct, msg) => {
+          setVidUploadProgress(pct);
+          setVidCompressionMsg(msg);
+        }
+      );
+
+      if (compressionResult.isCompressed) {
+        setVidCompressionStats(
+          `Compressed ${compressionResult.originalSizeMb.toFixed(1)}MB → ${compressionResult.compressedSizeMb.toFixed(1)}MB (${compressionResult.savingsPercent}% saved!)`
+        );
+        setUploadedVideoFile(compressionResult.file);
+      }
+
       if (url && (url.startsWith('http://') || url.startsWith('https://'))) {
         setVidUrl(url);
       }
@@ -685,14 +693,17 @@ export default function AdminPage() {
     }
   };
 
-  // Handle Video File Upload
+  // Handle Video File Upload in Lesson Outline
   const handleLessonVideoFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setLessonVideoFile(file);
     try {
-      const uploadedUrl = await uploadToCloudinary(file, 'auto');
-      setLessonVideoUrl(uploadedUrl);
+      const { url, compressionResult } = await uploadVideoWithAutoCompression(file);
+      if (compressionResult.isCompressed) {
+        setLessonVideoFile(compressionResult.file);
+      }
+      setLessonVideoUrl(url || URL.createObjectURL(file));
     } catch (err) {
       console.warn('Video upload fallback to local stream:', err);
       setLessonVideoUrl(URL.createObjectURL(file));
@@ -1215,9 +1226,24 @@ export default function AdminPage() {
                   </div>
                 )}
                 {isVidUploading && (
-                  <p className="text-[10px] text-indigo-600 mt-1 animate-pulse font-bold flex items-center gap-1">
-                    <span>Uploading video to Cloudinary Cloud CDN... please wait</span>
-                  </p>
+                  <div className="mt-2 space-y-1.5 p-2.5 rounded-xl bg-indigo-50 border border-indigo-100">
+                    <div className="flex justify-between text-[11px] font-semibold text-indigo-700">
+                      <span className="truncate">{vidCompressionMsg || 'Uploading video to Cloud CDN...'}</span>
+                      <span className="shrink-0">{vidUploadProgress}%</span>
+                    </div>
+                    <div className="w-full bg-indigo-200/60 rounded-full h-1.5 overflow-hidden">
+                      <div
+                        className="bg-indigo-600 h-1.5 rounded-full transition-all duration-300"
+                        style={{ width: `${vidUploadProgress}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
+                {vidCompressionStats && (
+                  <div className="mt-2 flex items-center gap-2 text-[11px] text-emerald-700 font-semibold bg-emerald-50 border border-emerald-200 px-2.5 py-1.5 rounded-xl">
+                    <Sparkles className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                    <span>{vidCompressionStats}</span>
+                  </div>
                 )}
               </div>
 

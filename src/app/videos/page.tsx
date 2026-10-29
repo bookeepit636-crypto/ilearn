@@ -21,7 +21,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
 import { VideoLesson } from '@/types';
-import { uploadToCloudinary } from '@/lib/cloudinary';
+import { uploadToCloudinary, uploadVideoWithAutoCompression } from '@/lib/cloudinary';
 import { VideoPlayer } from '@/components/video/VideoPlayer';
 import { saveVideoBlob, generateVideoThumbnail } from '@/lib/videoStorage';
 
@@ -48,6 +48,8 @@ export default function VideosPage() {
   const [newDescription, setNewDescription] = useState('');
   const [uploadingFile, setUploadingFile] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [compressionMsg, setCompressionMsg] = useState('');
+  const [compressionStats, setCompressionStats] = useState('');
   const [selectedRawFile, setSelectedRawFile] = useState<File | null>(null);
   const [generatedThumb, setGeneratedThumb] = useState<string>('');
 
@@ -134,7 +136,9 @@ export default function VideosPage() {
 
     setSelectedRawFile(file);
     setUploadingFile(true);
-    setUploadProgress(20);
+    setUploadProgress(10);
+    setCompressionMsg('Analyzing video file...');
+    setCompressionStats('');
 
     // Auto-generate high-res video frame thumbnail
     try {
@@ -144,15 +148,26 @@ export default function VideosPage() {
       // ignore
     }
 
-    setUploadProgress(45);
-
     try {
-      const url = await uploadToCloudinary(file, 'video');
-      setUploadProgress(90);
+      const { url, compressionResult } = await uploadVideoWithAutoCompression(
+        file,
+        (pct, msg) => {
+          setUploadProgress(pct);
+          setCompressionMsg(msg);
+        }
+      );
+
+      if (compressionResult.isCompressed) {
+        setCompressionStats(
+          `Compressed ${compressionResult.originalSizeMb.toFixed(1)}MB → ${compressionResult.compressedSizeMb.toFixed(1)}MB (${compressionResult.savingsPercent}% saved!)`
+        );
+        setSelectedRawFile(compressionResult.file);
+      }
+
       if (url && (url.startsWith('http://') || url.startsWith('https://'))) {
         setNewUrl(url);
       } else {
-        setNewUrl(URL.createObjectURL(file));
+        setNewUrl(URL.createObjectURL(compressionResult.file));
       }
     } catch (err) {
       console.warn('Video upload fallback to local stream:', err);
@@ -649,17 +664,23 @@ export default function VideosPage() {
                   className="w-full text-xs text-slate-600 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-cyan-50 file:text-[#0077b6] hover:file:bg-cyan-100 cursor-pointer"
                 />
                 {uploadingFile && (
-                  <div className="mt-2 space-y-1">
+                  <div className="mt-2 space-y-1.5 p-2.5 rounded-xl bg-cyan-50/60 border border-cyan-100">
                     <div className="flex justify-between text-[11px] font-semibold text-[#0077b6]">
-                      <span>Processing & uploading video...</span>
-                      <span>{uploadProgress}%</span>
+                      <span className="truncate">{compressionMsg || 'Processing & uploading video...'}</span>
+                      <span className="shrink-0">{uploadProgress}%</span>
                     </div>
-                    <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                    <div className="w-full bg-cyan-100 rounded-full h-1.5 overflow-hidden">
                       <div
                         className="bg-[#0077b6] h-1.5 rounded-full transition-all duration-300"
                         style={{ width: `${uploadProgress}%` }}
                       />
                     </div>
+                  </div>
+                )}
+                {compressionStats && (
+                  <div className="mt-2 flex items-center gap-2 text-[11px] text-emerald-700 font-semibold bg-emerald-50 border border-emerald-200 px-2.5 py-1.5 rounded-xl">
+                    <Sparkles className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                    <span>{compressionStats}</span>
                   </div>
                 )}
                 {generatedThumb && (
