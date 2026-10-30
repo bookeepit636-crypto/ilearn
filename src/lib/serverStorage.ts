@@ -114,3 +114,4 @@ export function savePersistentVideos(videos: VideoLesson[]): void {
     console.warn('Failed to write videos.json:', err);
   }
 }
+
