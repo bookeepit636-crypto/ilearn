@@ -189,12 +189,27 @@ export async function POST(req: Request) {
         html: htmlContent
       });
 
+      // If custom domain is not verified, retry using onboarding@resend.dev
+      if (
+        sendResult.error &&
+        (sendResult.error.message?.toLowerCase().includes('domain') ||
+          sendResult.error.message?.toLowerCase().includes('verified') ||
+          sendResult.error.message?.toLowerCase().includes('not registered'))
+      ) {
+        sendResult = await resend.emails.send({
+          from: 'BookKeep-It <onboarding@resend.dev>',
+          to: recipients,
+          subject,
+          html: htmlContent
+        });
+      }
+
       // If Resend trial mode blocks external recipients, fallback to sending to admin email
       if (sendResult.error && sendResult.error.message?.toLowerCase().includes('testing emails') && adminEmail) {
         sendResult = await resend.emails.send({
-          from: fromEmail,
+          from: 'BookKeep-It <onboarding@resend.dev>',
           to: [adminEmail],
-          subject,
+          subject: `[For: ${recipients.join(', ')}] ${subject}`,
           html: htmlContent
         });
       }

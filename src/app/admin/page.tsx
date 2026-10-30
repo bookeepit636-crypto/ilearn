@@ -2075,11 +2075,17 @@ export default function AdminPage() {
                       <tr key={st.id} className="hover:bg-slate-50/80 transition">
                         <td className="py-3 px-3">
                           <div className="flex items-center gap-2.5">
-                            <img
-                              src={st.avatarUrl}
-                              alt={st.name}
-                              className="w-8 h-8 rounded-full object-cover border border-slate-200 shrink-0"
-                            />
+                            {st.avatarUrl ? (
+                              <img
+                                src={st.avatarUrl}
+                                alt={st.name}
+                                className="w-8 h-8 rounded-full object-cover border border-slate-200 shrink-0"
+                              />
+                            ) : (
+                              <div className="w-8 h-8 rounded-full bg-indigo-600 text-white font-bold flex items-center justify-center shrink-0 text-xs">
+                                {st.name.charAt(0).toUpperCase()}
+                              </div>
+                            )}
                             <div>
                               <div className="font-bold text-slate-800">{st.name}</div>
                               <div className="text-[10px] text-slate-400">{st.email}</div>

@@ -55,6 +55,18 @@ export default function DownloadsPage() {
   };
 
   const handleDownload = (material: DownloadableMaterial) => {
+    if (material.downloadUrl && material.downloadUrl !== '#' && !material.downloadUrl.startsWith('javascript:')) {
+      const link = document.createElement('a');
+      link.href = material.downloadUrl;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      link.setAttribute('download', `${material.title.replace(/\s+/g, '_')}.${material.fileType}`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      return;
+    }
+
     const blob = new Blob(
       [
         `BookKeep-It Material Download\nTitle: ${material.title}\nCategory: ${material.category}\nDate: ${new Date().toISOString()}\n\nSample Accounting Practice Data:\nAccount Code,Account Name,Debit ($),Credit ($)\n101,Cash,15000,0\n102,Accounts Receivable,4500,0\n201,Accounts Payable,0,2500\n301,Owner's Equity,0,17000\n`

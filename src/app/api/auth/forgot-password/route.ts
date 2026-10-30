@@ -145,16 +145,32 @@ export async function POST(req: Request) {
         });
 
         if (sendResult.error) {
+          // If custom domain is not verified, retry with onboarding@resend.dev
+          if (
+            sendResult.error.message?.toLowerCase().includes('domain') ||
+            sendResult.error.message?.toLowerCase().includes('verified')
+          ) {
+            sendResult = await resend.emails.send({
+              from: 'BookKeep-It <onboarding@resend.dev>',
+              to: [email],
+              subject,
+              html: htmlContent
+            });
+          }
+
           // If Resend free tier has domain verification restriction, also send to admin email
-          if (adminEmail && sendResult.error.message?.toLowerCase().includes('testing emails')) {
+          if (adminEmail && sendResult.error && sendResult.error.message?.toLowerCase().includes('testing emails')) {
             await resend.emails.send({
-              from: fromEmail,
+              from: 'BookKeep-It <onboarding@resend.dev>',
               to: [adminEmail],
               subject: `[BookKeep-It Reset for ${email}] ${subject}`,
               html: htmlContent
             });
             emailSent = true;
             provider = 'resend_admin_fallback';
+          } else if (!sendResult.error) {
+            emailSent = true;
+            provider = 'resend';
           }
         } else {
           emailSent = true;

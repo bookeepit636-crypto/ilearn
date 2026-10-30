@@ -432,10 +432,11 @@ export async function recordAttendanceToSupabase(attendance: {
   // 2. Also record to Supabase if configured and table exists
   if (!isSupabaseConfigured() || !liveAttendanceTableAvailable) return true;
   try {
+    const validUserId = isValidUUID(attendance.userId) ? attendance.userId : null;
     const { error, status } = await supabase.from('live_attendance').upsert({
       id: attendance.id,
       session_id: attendance.sessionId,
-      user_id: attendance.userId || null,
+      user_id: validUserId,
       user_name: attendance.userName,
       user_email: attendance.userEmail || null,
       duration_minutes: attendance.durationMinutes || 0

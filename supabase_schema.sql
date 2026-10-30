@@ -95,6 +95,8 @@ CREATE TABLE IF NOT EXISTS public.materials (
 CREATE TABLE IF NOT EXISTS public.videos (
   id TEXT PRIMARY KEY,
   title TEXT NOT NULL,
+  course_id TEXT REFERENCES public.courses(id) ON DELETE SET NULL,
+  lesson_id TEXT,
   topic TEXT NOT NULL,
   duration TEXT NOT NULL,
   video_url TEXT NOT NULL,
@@ -104,6 +106,10 @@ CREATE TABLE IF NOT EXISTS public.videos (
   views_count INT DEFAULT 0,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Idempotent column additions for existing videos tables
+ALTER TABLE public.videos ADD COLUMN IF NOT EXISTS course_id TEXT;
+ALTER TABLE public.videos ADD COLUMN IF NOT EXISTS lesson_id TEXT;
 
 -- 7. NOTIFICATIONS TABLE
 CREATE TABLE IF NOT EXISTS public.notifications (
@@ -197,7 +203,7 @@ ALTER TABLE public.live_sessions ADD COLUMN IF NOT EXISTS created_by TEXT;
 CREATE TABLE IF NOT EXISTS public.live_attendance (
   id TEXT PRIMARY KEY,
   session_id TEXT REFERENCES public.live_sessions(id) ON DELETE CASCADE,
-  user_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE,
+  user_id UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
   user_name TEXT NOT NULL,
   user_email TEXT,
   joined_at TIMESTAMPTZ DEFAULT NOW(),

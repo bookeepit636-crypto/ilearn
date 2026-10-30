@@ -168,11 +168,17 @@ export const Navbar: React.FC = () => {
               onClick={() => setIsProfileDropdownOpen(!isProfileDropdownOpen)}
               className="flex items-center gap-1.5 sm:gap-2 p-1 sm:pl-2 rounded-full bg-white border border-slate-200 hover:border-slate-300 shadow-xs transition group"
             >
-              <img
-                src={user.avatarUrl}
-                alt={user.name}
-                className="w-7 h-7 sm:w-8 sm:h-8 rounded-full object-cover border-2 border-[#00b4d8]"
-              />
+              {user.avatarUrl ? (
+                <img
+                  src={user.avatarUrl}
+                  alt={user.name}
+                  className="w-7 h-7 sm:w-8 sm:h-8 rounded-full object-cover border-2 border-[#00b4d8]"
+                />
+              ) : (
+                <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-[#00b4d8] text-white font-black flex items-center justify-center text-xs">
+                  {user.name.charAt(0).toUpperCase()}
+                </div>
+              )}
               <span className="text-xs font-bold text-slate-800 hidden lg:inline truncate max-w-[90px]">
                 {user.name}
               </span>
