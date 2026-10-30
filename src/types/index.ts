@@ -37,6 +37,8 @@ export interface Quiz {
   passingScore: number;
   durationMinutes: number;
   questions: QuizQuestion[];
+  targetStudentId?: string;
+  targetStudentName?: string;
   createdAt?: string;
 }
 
@@ -44,6 +46,11 @@ export interface QuizSubmission {
   id: string;
   quizId: string;
   quizTitle: string;
+  userId?: string;
+  userName?: string;
+  userEmail?: string;
+  studentId?: string;
+  program?: string;
   score: number; // percentage e.g. 85
   passed: boolean;
   totalQuestions: number;

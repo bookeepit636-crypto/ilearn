@@ -1,12 +1,19 @@
 import { NextResponse } from 'next/server';
-import { Quiz } from '@/types';
+import { Quiz, QuizSubmission } from '@/types';
 import { initialQuizzes } from '@/lib/mockData';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
-import { loadPersistentQuizzes, savePersistentQuizzes } from '@/lib/serverStorage';
+import {
+  loadPersistentQuizzes,
+  savePersistentQuizzes,
+  loadPersistentSubmissions,
+  savePersistentSubmissions
+} from '@/lib/serverStorage';
 
 declare global {
   // eslint-disable-next-line no-var
   var __quizzesStore: Quiz[] | undefined;
+  // eslint-disable-next-line no-var
+  var __quizSubmissionsStore: QuizSubmission[] | undefined;
 }
 
 function getQuizzesStore(): Quiz[] {
@@ -20,6 +27,21 @@ function setQuizzesStore(quizzes: Quiz[]) {
   globalThis.__quizzesStore = quizzes;
   savePersistentQuizzes(quizzes);
 }
+
+function getQuizSubmissionsStore(): QuizSubmission[] {
+  if (!globalThis.__quizSubmissionsStore) {
+    globalThis.__quizSubmissionsStore = loadPersistentSubmissions();
+  }
+  return globalThis.__quizSubmissionsStore;
+}
+
+function setQuizSubmissionsStore(submissions: QuizSubmission[]) {
+  globalThis.__quizSubmissionsStore = submissions;
+  savePersistentSubmissions(submissions);
+}
+
+const isValidUUID = (str?: string) =>
+  Boolean(str && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str));
 
 // GET /api/quizzes
 export async function GET() {
@@ -58,6 +80,8 @@ export async function GET() {
               passingScore: row.passing_score ?? 75,
               durationMinutes: row.duration_minutes ?? 15,
               questions: Array.isArray(row.questions) ? row.questions : [],
+              targetStudentId: row.target_student_id || existing?.targetStudentId || undefined,
+              targetStudentName: row.target_student_name || existing?.targetStudentName || undefined,
               createdAt: row.created_at
             });
           });
@@ -69,8 +93,19 @@ export async function GET() {
       }
     }
 
+    // Load submissions
+    let subs = getQuizSubmissionsStore();
+    const diskSubs = loadPersistentSubmissions();
+    if (diskSubs.length > 0) {
+      const subMap = new Map<string, QuizSubmission>();
+      subs.forEach((s) => subMap.set(s.id, s));
+      diskSubs.forEach((s) => subMap.set(s.id, s));
+      subs = Array.from(subMap.values());
+      globalThis.__quizSubmissionsStore = subs;
+    }
+
     return NextResponse.json(
-      { success: true, quizzes: store },
+      { success: true, quizzes: store, submissions: subs },
       {
         headers: {
           'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
@@ -84,12 +119,60 @@ export async function GET() {
   }
 }
 
-// POST /api/quizzes - Create or Upsert quiz
+// POST /api/quizzes - Create/Upsert quiz or Submit student quiz answers
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const quiz = (body.quiz || body) as Quiz;
 
+    // 1. Student Quiz Submission Handler
+    if (body.action === 'submit' || body.submission) {
+      const submission: QuizSubmission = body.submission;
+      if (!submission || !submission.quizId) {
+        return NextResponse.json({ success: false, error: 'Invalid submission data' }, { status: 400 });
+      }
+
+      const currentSubs = getQuizSubmissionsStore();
+      const filtered = currentSubs.filter(
+        (s) =>
+          !(
+            s.quizId === submission.quizId &&
+            (s.userId === submission.userId || (s.userEmail && s.userEmail === submission.userEmail))
+          )
+      );
+      const updatedSubs = [submission, ...filtered];
+      setQuizSubmissionsStore(updatedSubs);
+
+      // Persist to Supabase quiz_submissions table if available
+      if (isSupabaseConfigured()) {
+        try {
+          const validUserId = isValidUUID(submission.userId) ? submission.userId : null;
+          await supabase.from('quiz_submissions').upsert(
+            {
+              id: submission.id,
+              user_id: validUserId,
+              quiz_id: submission.quizId,
+              quiz_title: submission.quizTitle,
+              score: submission.score,
+              passed: submission.passed,
+              total_questions: submission.totalQuestions,
+              correct_answers_count: submission.correctAnswersCount,
+              user_name: submission.userName || null,
+              user_email: submission.userEmail || null,
+              student_id: submission.studentId || null,
+              submitted_at: submission.submittedAt
+            },
+            { onConflict: 'id' }
+          );
+        } catch {
+          // fallback to disk store
+        }
+      }
+
+      return NextResponse.json({ success: true, submission, submissions: updatedSubs });
+    }
+
+    // 2. Quiz Creator / Upsert Handler
+    const quiz = (body.quiz || body) as Quiz;
     if (!quiz || !quiz.title) {
       return NextResponse.json({ success: false, error: 'Quiz title is required.' }, { status: 400 });
     }
@@ -106,6 +189,8 @@ export async function POST(req: Request) {
       topicTitle: quiz.topicTitle ? quiz.topicTitle.trim() : 'Accounting Quiz',
       passingScore: typeof quiz.passingScore === 'number' ? quiz.passingScore : 75,
       durationMinutes: typeof quiz.durationMinutes === 'number' ? quiz.durationMinutes : 15,
+      targetStudentId: quiz.targetStudentId || undefined,
+      targetStudentName: quiz.targetStudentName || undefined,
       questions: quiz.questions.map((q, idx) => ({
         id: q.id || `q-${Date.now()}-${idx}`,
         question: q.question.trim(),
@@ -129,7 +214,6 @@ export async function POST(req: Request) {
 
     if (isSupabaseConfigured()) {
       try {
-        // Notice: Column 'course_id' is excluded because it does not exist in Supabase quizzes schema
         await supabase.from('quizzes').upsert(
           {
             id: validatedQuiz.id,
@@ -138,7 +222,9 @@ export async function POST(req: Request) {
             topic_title: validatedQuiz.topicTitle,
             passing_score: validatedQuiz.passingScore,
             duration_minutes: validatedQuiz.durationMinutes,
-            questions: validatedQuiz.questions
+            questions: validatedQuiz.questions,
+            target_student_id: validatedQuiz.targetStudentId || null,
+            target_student_name: validatedQuiz.targetStudentName || null
           },
           { onConflict: 'id' }
         );
@@ -188,7 +274,9 @@ export async function PUT(req: Request) {
             topic_title: updatedQuiz.topicTitle,
             passing_score: updatedQuiz.passingScore,
             duration_minutes: updatedQuiz.durationMinutes,
-            questions: updatedQuiz.questions
+            questions: updatedQuiz.questions,
+            target_student_id: updatedQuiz.targetStudentId || null,
+            target_student_name: updatedQuiz.targetStudentName || null
           },
           { onConflict: 'id' }
         );
@@ -217,15 +305,21 @@ export async function DELETE(req: Request) {
     const updatedStore = currentStore.filter((q) => q.id !== id);
     setQuizzesStore(updatedStore);
 
+    // Clean up submissions
+    const currentSubs = getQuizSubmissionsStore();
+    const updatedSubs = currentSubs.filter((s) => s.quizId !== id);
+    setQuizSubmissionsStore(updatedSubs);
+
     if (isSupabaseConfigured()) {
       try {
         await supabase.from('quizzes').delete().eq('id', id);
+        await supabase.from('quiz_submissions').delete().eq('quiz_id', id);
       } catch (e) {
         // silent fallback
       }
     }
 
-    return NextResponse.json({ success: true, quizzes: updatedStore });
+    return NextResponse.json({ success: true, quizzes: updatedStore, submissions: updatedSubs });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error?.message }, { status: 500 });
   }

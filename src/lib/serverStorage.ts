@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { Course, Quiz, VideoLesson } from '@/types';
+import { Course, Quiz, QuizSubmission, VideoLesson } from '@/types';
 import { initialCourses, initialQuizzes, initialVideos } from './mockData';
 
 const DATA_DIR = path.join(process.cwd(), 'data');
@@ -112,6 +112,36 @@ export function savePersistentVideos(videos: VideoLesson[]): void {
     fs.writeFileSync(VIDEOS_FILE, JSON.stringify(videos, null, 2), 'utf-8');
   } catch (err) {
     console.warn('Failed to write videos.json:', err);
+  }
+}
+
+// ========================
+// QUIZ SUBMISSIONS STORAGE
+// ========================
+const SUBMISSIONS_FILE = path.join(DATA_DIR, 'submissions.json');
+
+export function loadPersistentSubmissions(): QuizSubmission[] {
+  ensureDataDir();
+  try {
+    if (fs.existsSync(SUBMISSIONS_FILE)) {
+      const content = fs.readFileSync(SUBMISSIONS_FILE, 'utf-8');
+      const parsed = JSON.parse(content);
+      if (Array.isArray(parsed)) {
+        return parsed;
+      }
+    }
+  } catch (err) {
+    console.warn('Failed to read submissions.json:', err);
+  }
+  return [];
+}
+
+export function savePersistentSubmissions(submissions: QuizSubmission[]): void {
+  ensureDataDir();
+  try {
+    fs.writeFileSync(SUBMISSIONS_FILE, JSON.stringify(submissions, null, 2), 'utf-8');
+  } catch (err) {
+    console.warn('Failed to write submissions.json:', err);
   }
 }
 

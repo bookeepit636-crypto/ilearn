@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { Course, LiveSession, LiveSessionStatus, Quiz, VideoLesson } from '@/types';
+import { Course, LiveSession, LiveSessionStatus, Quiz, QuizSubmission, VideoLesson } from '@/types';
 
 // Read environment variables with fallback defaults to ensure seamless Vercel production deployment
 const supabaseUrl =
@@ -636,6 +636,8 @@ export async function fetchQuizzesFromSupabase(): Promise<Quiz[]> {
       passingScore: row.passing_score ?? 75,
       durationMinutes: row.duration_minutes ?? 15,
       questions: Array.isArray(row.questions) ? row.questions : [],
+      targetStudentId: row.target_student_id || undefined,
+      targetStudentName: row.target_student_name || undefined,
       createdAt: row.created_at
     }));
   } catch (err) {
@@ -655,7 +657,9 @@ export async function saveQuizToSupabase(quiz: Quiz): Promise<boolean> {
         topic_title: quiz.topicTitle,
         passing_score: quiz.passingScore,
         duration_minutes: quiz.durationMinutes,
-        questions: quiz.questions
+        questions: quiz.questions,
+        target_student_id: quiz.targetStudentId || null,
+        target_student_name: quiz.targetStudentName || null
       },
       { onConflict: 'id' }
     );
@@ -718,6 +722,102 @@ export async function deleteQuizFromApi(id: string): Promise<boolean> {
   try {
     const res = await fetch(`/api/quizzes?id=${encodeURIComponent(id)}`, {
       method: 'DELETE'
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+// ==========================================
+// QUIZ SUBMISSIONS DATABASE PERSISTENCE
+// ==========================================
+
+const isValidUUID = (str?: string) =>
+  Boolean(str && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str));
+
+export async function fetchQuizSubmissionsFromSupabase(): Promise<QuizSubmission[]> {
+  if (!isSupabaseConfigured()) return [];
+  try {
+    const { data, error } = await supabase
+      .from('quiz_submissions')
+      .select('*')
+      .order('submitted_at', { ascending: false });
+
+    if (error) {
+      console.warn('Supabase fetch submissions note:', error.message);
+      return [];
+    }
+
+    if (!data || !Array.isArray(data)) return [];
+
+    return data.map((row: any) => ({
+      id: row.id,
+      quizId: row.quiz_id,
+      quizTitle: row.quiz_title,
+      userId: row.user_id || undefined,
+      userName: row.user_name || undefined,
+      userEmail: row.user_email || undefined,
+      studentId: row.student_id || undefined,
+      score: row.score,
+      passed: row.passed,
+      totalQuestions: row.total_questions,
+      correctAnswersCount: row.correct_answers_count,
+      submittedAt: row.submitted_at
+    }));
+  } catch {
+    return [];
+  }
+}
+
+export async function saveQuizSubmissionToSupabase(submission: QuizSubmission): Promise<boolean> {
+  if (!isSupabaseConfigured()) return false;
+  try {
+    const validUserId = isValidUUID(submission.userId) ? submission.userId : null;
+    const { error } = await supabase.from('quiz_submissions').upsert(
+      {
+        id: submission.id,
+        user_id: validUserId,
+        quiz_id: submission.quizId,
+        quiz_title: submission.quizTitle,
+        score: submission.score,
+        passed: submission.passed,
+        total_questions: submission.totalQuestions,
+        correct_answers_count: submission.correctAnswersCount,
+        user_name: submission.userName || null,
+        user_email: submission.userEmail || null,
+        student_id: submission.studentId || null,
+        submitted_at: submission.submittedAt
+      },
+      { onConflict: 'id' }
+    );
+    return !error;
+  } catch {
+    return false;
+  }
+}
+
+export async function fetchQuizSubmissionsFromApi(): Promise<QuizSubmission[]> {
+  try {
+    const res = await fetch('/api/quizzes', { cache: 'no-store' });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.success && Array.isArray(data.submissions)) {
+        return data.submissions;
+      }
+    }
+  } catch {
+    // ignore
+  }
+  return [];
+}
+
+export async function saveQuizSubmissionToApi(submission: QuizSubmission): Promise<boolean> {
+  try {
+    const res = await fetch('/api/quizzes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'submit', submission })
     });
     return res.ok;
   } catch {

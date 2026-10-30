@@ -50,6 +50,10 @@ import {
   fetchQuizzesFromApi,
   saveQuizToApi,
   deleteQuizFromApi,
+  fetchQuizSubmissionsFromSupabase,
+  saveQuizSubmissionToSupabase,
+  fetchQuizSubmissionsFromApi,
+  saveQuizSubmissionToApi,
   fetchLiveSessionsFromSupabase,
   saveLiveSessionToSupabase,
   deleteLiveSessionFromSupabase,
@@ -450,10 +454,33 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Initial fetch
     syncCloudLiveSessions();
 
+    // Sync Quiz Submissions from Supabase & API
+    const syncCloudSubmissions = async () => {
+      try {
+        const [cloudSubs, apiSubs] = await Promise.all([
+          fetchQuizSubmissionsFromSupabase(),
+          fetchQuizSubmissionsFromApi()
+        ]);
+        const incoming = [...apiSubs, ...cloudSubs];
+        if (isMounted && incoming.length > 0) {
+          setSubmissions((prevSubs) => {
+            const map = new Map<string, QuizSubmission>();
+            prevSubs.forEach((ps) => map.set(ps.id, ps));
+            incoming.forEach((cs) => map.set(cs.id, cs));
+            return Array.from(map.values());
+          });
+        }
+      } catch (e) {
+        console.warn('Could not sync cloud submissions:', e);
+      }
+    };
+    syncCloudSubmissions();
+
     // Master sync handler for all shared data
     const syncAllSharedData = () => {
       syncCloudCourses();
       syncCloudQuizzes();
+      syncCloudSubmissions();
       syncCloudVideos();
       syncCloudLiveSessions();
       syncRegisteredAccounts();
@@ -475,6 +502,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         quizChannel = new BroadcastChannel('bookkeepit_quiz_sync');
         quizChannel.onmessage = () => {
           syncCloudQuizzes();
+          syncCloudSubmissions();
         };
 
         courseChannel = new BroadcastChannel('bookkeepit_course_sync');
@@ -826,6 +854,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       id: `sub-${Date.now()}`,
       quizId,
       quizTitle: targetQuiz.title,
+      userId: user.id,
+      userName: user.name,
+      userEmail: user.email,
+      studentId: user.studentId,
+      program: user.program,
       score: scorePct,
       passed,
       totalQuestions,
@@ -844,7 +877,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     }));
 
-    setSubmissions(updatedSubs);
+    setSubmissions((prev) => {
+      const filtered = prev.filter(
+        (s) =>
+          !(
+            s.quizId === newSubmission.quizId &&
+            (s.userId === newSubmission.userId || (s.userEmail && s.userEmail === newSubmission.userEmail))
+          )
+      );
+      return [newSubmission, ...filtered];
+    });
 
     const avgScore = Math.round(updatedSubs.reduce((acc, curr) => acc + curr.score, 0) / updatedSubs.length);
 
@@ -853,6 +895,33 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       totalQuizzesTaken: updatedSubs.length,
       averageQuizScore: avgScore
     }));
+
+    // Update real accounts roster so admin immediately sees updated scores
+    setAccounts((prev) =>
+      prev.map((acc) => {
+        if (acc.id === user.id || acc.email.toLowerCase() === user.email.toLowerCase()) {
+          return {
+            ...acc,
+            totalQuizzesTaken: updatedSubs.length,
+            averageQuizScore: avgScore
+          };
+        }
+        return acc;
+      })
+    );
+
+    // Save submission to Supabase and server API
+    saveQuizSubmissionToSupabase(newSubmission).catch(() => {});
+    saveQuizSubmissionToApi(newSubmission).catch(() => {});
+
+    // Broadcast submission event across tabs
+    try {
+      if (typeof window !== 'undefined' && typeof BroadcastChannel !== 'undefined') {
+        const ch = new BroadcastChannel('bookkeepit_quiz_sync');
+        ch.postMessage({ type: 'QUIZ_SUBMITTED', submissionId: newSubmission.id });
+        ch.close();
+      }
+    } catch {}
 
     const newNotif: NotificationItem = {
       id: `notif-${Date.now()}`,

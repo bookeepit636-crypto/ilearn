@@ -154,6 +154,9 @@ export default function AdminPage() {
   const [lessonFileName, setLessonFileName] = useState('');
   const [lessonFileUrl, setLessonFileUrl] = useState('');
 
+  // Real registered students from database & auth accounts
+  const realStudents = accounts.filter((a) => a.role === 'student');
+
   // Quiz Builder State
   const [quizTitle, setQuizTitle] = useState('');
   const [quizCourseId, setQuizCourseId] = useState('');
@@ -161,6 +164,9 @@ export default function AdminPage() {
   const [quizTopicTitle, setQuizTopicTitle] = useState('Basic Accounting Principles');
   const [quizPassingScore, setQuizPassingScore] = useState(75);
   const [quizDuration, setQuizDuration] = useState(20);
+  const [quizTargetStudentId, setQuizTargetStudentId] = useState('');
+  const [selectedQuizForSubmissions, setSelectedQuizForSubmissions] = useState<string | null>(null);
+  const [isQuizStudentsRosterOpen, setIsQuizStudentsRosterOpen] = useState(false);
   const [quizSuccessMsg, setQuizSuccessMsg] = useState('');
   const [quizErrorMsg, setQuizErrorMsg] = useState('');
 
@@ -546,6 +552,8 @@ export default function AdminPage() {
       return;
     }
 
+    const targetStudent = quizTargetStudentId ? realStudents.find((s) => s.id === quizTargetStudentId) : null;
+
     const newQuiz: Quiz = {
       id: `qz-${Date.now()}`,
       title: quizTitle.trim(),
@@ -555,6 +563,8 @@ export default function AdminPage() {
       passingScore: quizPassingScore,
       durationMinutes: quizDuration,
       questions: addedQuestions,
+      targetStudentId: quizTargetStudentId || undefined,
+      targetStudentName: targetStudent ? targetStudent.name : 'All Enrolled Students',
       createdAt: new Date().toISOString()
     };
 
@@ -562,9 +572,43 @@ export default function AdminPage() {
     setQuizTitle('');
     setQuizCourseId('');
     setQuizLessonId('');
+    setQuizTargetStudentId('');
     setAddedQuestions([]);
-    setQuizSuccessMsg(`Quiz "${newQuiz.title}" published successfully with ${newQuiz.questions.length} questions!`);
+    setQuizSuccessMsg(`Quiz "${newQuiz.title}" published successfully to ${newQuiz.targetStudentName}!`);
     setTimeout(() => setQuizSuccessMsg(''), 5000);
+  };
+
+  // Upload & Import Quiz Questions from JSON file
+  const handleQuizFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const text = event.target?.result as string;
+        const parsed = JSON.parse(text);
+
+        if (Array.isArray(parsed)) {
+          setAddedQuestions(parsed);
+          alert(`Imported ${parsed.length} questions from file into draft!`);
+        } else if (parsed && typeof parsed === 'object') {
+          if (parsed.title) setQuizTitle(parsed.title);
+          if (parsed.topicTitle) setQuizTopicTitle(parsed.topicTitle);
+          if (parsed.passingScore) setQuizPassingScore(Number(parsed.passingScore));
+          if (parsed.durationMinutes) setQuizDuration(Number(parsed.durationMinutes));
+          if (Array.isArray(parsed.questions)) {
+            setAddedQuestions(parsed.questions);
+            alert(`Loaded quiz "${parsed.title || 'Imported Quiz'}" with ${parsed.questions.length} questions!`);
+          } else {
+            alert('Quiz title and settings loaded. Please add questions.');
+          }
+        }
+      } catch (err: any) {
+        alert('Invalid JSON file format: ' + err?.message);
+      }
+    };
+    reader.readAsText(file);
   };
 
   const openEditQuizModal = (qz: Quiz) => {
@@ -1429,21 +1473,141 @@ export default function AdminPage() {
             </div>
           )}
 
+          {/* Quick Header Stats */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <div className="p-4 rounded-3xl bg-white border border-slate-100 card-theme">
+              <span className="text-xs font-bold text-slate-500">Registered Students</span>
+              <div className="text-2xl font-black text-slate-800 mt-1">{realStudents.length}</div>
+              <span className="text-[11px] text-indigo-600 font-semibold">Active Enrollees</span>
+            </div>
+
+            <div className="p-4 rounded-3xl bg-white border border-slate-100 card-theme">
+              <span className="text-xs font-bold text-slate-500">Published Quizzes</span>
+              <div className="text-2xl font-black text-slate-800 mt-1">{quizzes.length}</div>
+              <span className="text-[11px] text-cyan-600 font-semibold">Active Assessments</span>
+            </div>
+
+            <div className="p-4 rounded-3xl bg-white border border-slate-100 card-theme">
+              <span className="text-xs font-bold text-slate-500">Student Submissions</span>
+              <div className="text-2xl font-black text-slate-800 mt-1">{submissions.length}</div>
+              <span className="text-[11px] text-emerald-600 font-semibold">Completed Attempts</span>
+            </div>
+
+            <div className="p-4 rounded-3xl bg-white border border-slate-100 card-theme">
+              <span className="text-xs font-bold text-slate-500">Class Avg Score</span>
+              <div className="text-2xl font-black text-slate-800 mt-1">
+                {submissions.length > 0
+                  ? Math.round(submissions.reduce((acc, s) => acc + s.score, 0) / submissions.length)
+                  : 85}%
+              </div>
+              <span className="text-[11px] text-[#0077b6] font-semibold">Passing Standard: 75%</span>
+            </div>
+          </div>
+
+          {/* REGISTERED STUDENTS QUIZ ROSTER DRAWER */}
+          <div className="card-theme p-4 sm:p-5 rounded-3xl bg-white border border-slate-100 space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Users className="w-5 h-5 text-indigo-600" />
+                <h3 className="text-sm sm:text-base font-bold text-slate-800">
+                  Registered Students & Quiz Readiness ({realStudents.length})
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsQuizStudentsRosterOpen((prev) => !prev)}
+                className="px-3.5 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition flex items-center gap-1.5"
+              >
+                <span>{isQuizStudentsRosterOpen ? 'Hide Student List' : 'View All Enrolled Students'}</span>
+                {isQuizStudentsRosterOpen ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+              </button>
+            </div>
+
+            {isQuizStudentsRosterOpen && (
+              <div className="pt-2 border-t border-slate-100">
+                {realStudents.length === 0 ? (
+                  <p className="text-xs text-slate-400 py-4 text-center">
+                    No registered students found in the database. When students register on BookKeep-It, they will automatically appear here.
+                  </p>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {realStudents.map((student) => {
+                      const studentSubs = submissions.filter(
+                        (s) => s.userId === student.id || (s.userEmail && s.userEmail.toLowerCase() === student.email.toLowerCase())
+                      );
+                      const studentAvg = studentSubs.length > 0
+                        ? Math.round(studentSubs.reduce((acc, s) => acc + s.score, 0) / studentSubs.length)
+                        : (student.averageQuizScore || 0);
+
+                      return (
+                        <div key={student.id} className="p-3 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-between gap-3 text-xs">
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            {student.avatarUrl ? (
+                              <img src={student.avatarUrl} alt={student.name} className="w-8 h-8 rounded-full object-cover border border-slate-200 shrink-0" />
+                            ) : (
+                              <div className="w-8 h-8 rounded-full bg-indigo-600 text-white font-bold flex items-center justify-center shrink-0">
+                                {student.name.charAt(0).toUpperCase()}
+                              </div>
+                            )}
+                            <div className="min-w-0">
+                              <p className="font-bold text-slate-800 truncate">{student.name}</p>
+                              <p className="text-[10px] text-slate-400 truncate">{student.studentId || 'Student'} • {student.email}</p>
+                            </div>
+                          </div>
+
+                          <div className="text-right shrink-0">
+                            <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 block">
+                              {studentSubs.length} Quizzes Taken
+                            </span>
+                            <span className="text-[10px] font-bold text-slate-500 mt-0.5 block">
+                              Avg: {studentAvg}%
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* QUIZ BUILDER & UPLOAD FORM */}
           <div className="card-theme p-6 rounded-3xl bg-white border border-slate-100 space-y-6">
-            <div className="border-b border-slate-100 pb-3 flex items-center justify-between">
-              <h3 className="text-base font-bold text-slate-800 flex items-center gap-2">
-                <FileQuestion className="w-5 h-5 text-indigo-600" />
-                Create & Publish Quiz / Exam
-              </h3>
-              <span className="text-xs text-slate-400 font-medium">
-                {addedQuestions.length} Questions Added to Draft
-              </span>
+            <div className="border-b border-slate-100 pb-3 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h3 className="text-base font-bold text-slate-800 flex items-center gap-2">
+                  <FileQuestion className="w-5 h-5 text-indigo-600" />
+                  Create & Publish Quiz / Exam
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Publish assessments to all students or assign to specific learners.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                {/* Upload JSON file button */}
+                <label className="cursor-pointer px-3.5 py-1.5 rounded-full bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 text-xs font-bold transition flex items-center gap-1.5 shadow-2xs">
+                  <Upload className="w-3.5 h-3.5" />
+                  <span>Upload Quiz (JSON File)</span>
+                  <input
+                    type="file"
+                    accept=".json"
+                    onChange={handleQuizFileUpload}
+                    className="hidden"
+                  />
+                </label>
+
+                <span className="text-xs text-slate-500 font-semibold bg-slate-100 px-3 py-1.5 rounded-full">
+                  {addedQuestions.length} Questions in Draft
+                </span>
+              </div>
             </div>
 
             {/* Quiz General Settings */}
             <form onSubmit={handleCreateQuizSubmit} className="space-y-5 text-xs">
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div className="md:col-span-2">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="lg:col-span-2">
                   <label className="block text-slate-700 font-bold mb-1">Quiz / Exam Title *</label>
                   <input
                     type="text"
@@ -1477,6 +1641,26 @@ export default function AdminPage() {
                   </select>
                 </div>
 
+                {/* TARGET STUDENT SELECTION */}
+                <div>
+                  <label className="block text-slate-700 font-bold mb-1 flex items-center gap-1">
+                    <User className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>Assign to Student (Visibility)</span>
+                  </label>
+                  <select
+                    value={quizTargetStudentId}
+                    onChange={(e) => setQuizTargetStudentId(e.target.value)}
+                    className="w-full bg-slate-50 border border-indigo-200 rounded-xl px-3 py-2 text-slate-800 font-semibold focus:border-indigo-500"
+                  >
+                    <option value="">-- Open to all students ({realStudents.length}) --</option>
+                    {realStudents.map((st) => (
+                      <option key={st.id} value={st.id}>
+                        {st.name} ({st.studentId || st.email})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
                 <div>
                   <label className="block text-slate-700 font-bold mb-1">Target Topic</label>
                   <input
@@ -1488,7 +1672,7 @@ export default function AdminPage() {
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-2 md:col-span-2">
+                <div className="grid grid-cols-2 gap-2">
                   <div>
                     <label className="block text-slate-700 font-bold mb-1">Passing Grade (%)</label>
                     <input
@@ -1634,51 +1818,199 @@ export default function AdminPage() {
             </form>
           </div>
 
-          {/* List of Published Quizzes */}
+          {/* List of Published Quizzes with Submissions Audit */}
           <div className="space-y-3">
-            <h4 className="text-sm font-black text-slate-800">Published Quizzes & Assessments: ({quizzes.length})</h4>
+            <div className="flex items-center justify-between">
+              <h4 className="text-sm font-black text-slate-800">
+                Published Quizzes & Assessments ({quizzes.length}):
+              </h4>
+              <span className="text-xs text-slate-500">
+                Total Submissions Recorded: <strong className="text-indigo-600 font-bold">{submissions.length}</strong>
+              </span>
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {quizzes.map((qz) => {
                 const linkedCourse = courses.find((c) => c.id === qz.courseId);
+                const quizSubmissions = submissions.filter((s) => s.quizId === qz.id);
+
                 return (
-                  <div key={qz.id} className="card-theme p-4 rounded-2xl bg-white border border-slate-100 flex items-start justify-between gap-3">
-                    <div className="space-y-1 min-w-0">
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        <span className="text-[10px] font-extrabold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full">
-                          Passing: {qz.passingScore}% • {qz.durationMinutes} Mins
-                        </span>
-                        {linkedCourse && (
-                          <span className="text-[10px] font-semibold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-full truncate max-w-[130px]" title={linkedCourse.title}>
-                            {linkedCourse.title}
+                  <div key={qz.id} className="card-theme p-4.5 rounded-2xl bg-white border border-slate-100 flex flex-col justify-between space-y-3">
+                    <div className="space-y-2">
+                      <div className="flex flex-wrap items-center justify-between gap-1.5">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="text-[10px] font-extrabold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                            Passing: {qz.passingScore}% • {qz.durationMinutes} Mins
                           </span>
-                        )}
+                          <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-200">
+                            {qz.targetStudentName || 'All Students'}
+                          </span>
+                          {linkedCourse && (
+                            <span className="text-[10px] font-semibold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-full truncate max-w-[130px]" title={linkedCourse.title}>
+                              {linkedCourse.title}
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => openEditQuizModal(qz)}
+                            className="px-2.5 py-1 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold flex items-center gap-1 transition"
+                          >
+                            <Edit3 className="w-3.5 h-3.5" />
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => handleDeleteQuiz(qz.id)}
+                            className="p-1 rounded-full text-slate-400 hover:text-red-500 hover:bg-red-50 transition"
+                            title="Delete Quiz"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </div>
-                      <h4 className="text-sm font-bold text-slate-800 mt-1">{qz.title}</h4>
+
+                      <h4 className="text-sm font-bold text-slate-800">{qz.title}</h4>
                       <p className="text-xs text-slate-500">{qz.questions.length} Multiple Choice Questions</p>
                       <p className="text-[11px] text-slate-400">Topic: {qz.topicTitle}</p>
                     </div>
 
-                    <div className="flex items-center gap-1.5 shrink-0">
+                    <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
                       <button
-                        onClick={() => openEditQuizModal(qz)}
-                        className="px-3 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold flex items-center gap-1 transition"
+                        onClick={() => setSelectedQuizForSubmissions(qz.id)}
+                        className="px-3 py-1.5 rounded-full bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold transition flex items-center gap-1.5"
                       >
-                        <Edit3 className="w-3.5 h-3.5" />
-                        Edit
+                        <Eye className="w-3.5 h-3.5" />
+                        <span>View Submissions ({quizSubmissions.length})</span>
                       </button>
-                      <button
-                        onClick={() => handleDeleteQuiz(qz.id)}
-                        className="p-1.5 rounded-full text-slate-400 hover:text-red-500 hover:bg-red-50 transition"
-                        title="Delete Quiz"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+
+                      <span className="text-[11px] font-bold text-slate-400">
+                        {quizSubmissions.length} of {realStudents.length} Students Completed
+                      </span>
                     </div>
                   </div>
                 );
               })}
             </div>
           </div>
+
+          {/* STUDENT SUBMISSIONS MODAL */}
+          {selectedQuizForSubmissions && (() => {
+            const currentQuiz = quizzes.find((q) => q.id === selectedQuizForSubmissions);
+            const currentQuizSubs = submissions.filter((s) => s.quizId === selectedQuizForSubmissions);
+
+            return (
+              <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5">
+                <div className="bg-white border border-slate-200 rounded-3xl w-full max-w-3xl max-h-[85vh] flex flex-col overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
+                  <div className="p-4 sm:p-5 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+                    <div>
+                      <div className="flex items-center gap-2 mb-0.5">
+                        <span className="px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 text-[10px] font-bold uppercase tracking-wider">
+                          Student Submissions Audit
+                        </span>
+                        <span className="text-xs text-slate-400 font-semibold">{currentQuiz?.topicTitle}</span>
+                      </div>
+                      <h3 className="text-base sm:text-lg font-black text-slate-900">{currentQuiz?.title}</h3>
+                    </div>
+
+                    <button
+                      onClick={() => setSelectedQuizForSubmissions(null)}
+                      className="p-1.5 rounded-full text-slate-400 hover:text-slate-800 hover:bg-slate-200/60 transition"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
+
+                  <div className="px-5 py-2.5 bg-indigo-50/50 border-b border-indigo-100 flex items-center justify-between text-xs text-slate-600">
+                    <span>
+                      Passing Score: <strong className="text-slate-900 font-bold">{currentQuiz?.passingScore}%</strong>
+                    </span>
+                    <span>
+                      Total Recorded Submissions: <strong className="text-indigo-600 font-bold">{currentQuizSubs.length}</strong>
+                    </span>
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-3">
+                    {currentQuizSubs.length === 0 ? (
+                      <div className="text-center py-12 space-y-3">
+                        <div className="w-12 h-12 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center mx-auto">
+                          <Users className="w-6 h-6" />
+                        </div>
+                        <h4 className="text-sm font-bold text-slate-700">No Student Submissions Yet</h4>
+                        <p className="text-xs text-slate-400 max-w-md mx-auto">
+                          When students complete this quiz on their dashboard or the Quiz Hub, their score, pass/fail status, and answers will appear here in real-time.
+                        </p>
+                      </div>
+                    ) : (
+                      currentQuizSubs.map((sub) => {
+                        const matchedStudent = realStudents.find(
+                          (st) => st.id === sub.userId || (sub.userEmail && st.email.toLowerCase() === sub.userEmail.toLowerCase())
+                        );
+
+                        return (
+                          <div
+                            key={sub.id}
+                            className="p-4 rounded-2xl bg-white border border-slate-200 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                          >
+                            <div className="flex items-center gap-3">
+                              {matchedStudent?.avatarUrl ? (
+                                <img
+                                  src={matchedStudent.avatarUrl}
+                                  alt={sub.userName || 'Student'}
+                                  className="w-10 h-10 rounded-full object-cover border border-slate-200 shrink-0"
+                                />
+                              ) : (
+                                <div className="w-10 h-10 rounded-full bg-indigo-600 text-white font-black flex items-center justify-center text-sm shrink-0">
+                                  {(sub.userName || 'S').charAt(0).toUpperCase()}
+                                </div>
+                              )}
+                              <div>
+                                <h4 className="text-sm font-bold text-slate-800">{sub.userName || matchedStudent?.name || 'Student Learner'}</h4>
+                                <p className="text-xs text-slate-400">
+                                  {sub.studentId || matchedStudent?.studentId || 'ID Pending'} • {sub.userEmail || matchedStudent?.email}
+                                </p>
+                                <span className="text-[10px] text-slate-400">
+                                  Submitted: {new Date(sub.submittedAt).toLocaleString()}
+                                </span>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-3 self-end sm:self-auto">
+                              <div className="text-right">
+                                <span className="text-lg font-black text-slate-900 block">{sub.score}%</span>
+                                <span className="text-[10px] text-slate-400 block font-semibold">
+                                  {sub.correctAnswersCount} / {sub.totalQuestions} Correct
+                                </span>
+                              </div>
+
+                              <span
+                                className={`px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider ${
+                                  sub.passed
+                                    ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                                    : 'bg-amber-100 text-amber-800 border border-amber-300'
+                                }`}
+                              >
+                                {sub.passed ? 'Passed ✓' : 'Needs Review'}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+
+                  <div className="p-4 border-t border-slate-200 flex justify-end bg-slate-50">
+                    <button
+                      onClick={() => setSelectedQuizForSubmissions(null)}
+                      className="px-5 py-2 rounded-full bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold text-xs transition"
+                    >
+                      Close Viewer
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
         </div>
       )}
 

@@ -141,7 +141,18 @@ export default function QuizPage() {
 
   const topicsList = ['All', 'Basic Accounting Principles', 'Bookkeeping Cycle', 'Trial Balance & Adjustments', 'Financial Statements', 'Payroll & Taxation'];
 
-  const filteredQuizzes = quizzes.filter((quiz) => {
+  // Filter quizzes: Admin sees all; Students see open quizzes or quizzes assigned specifically to them
+  const visibleQuizzes = quizzes.filter((quiz) => {
+    if (isAdmin) return true;
+    if (!quiz.targetStudentId || quiz.targetStudentId === 'all') return true;
+    return (
+      quiz.targetStudentId === user.id ||
+      (user.studentId && quiz.targetStudentId === user.studentId) ||
+      (user.email && quiz.targetStudentId.toLowerCase() === user.email.toLowerCase())
+    );
+  });
+
+  const filteredQuizzes = visibleQuizzes.filter((quiz) => {
     const matchesTopic = selectedTopic === 'All' || quiz.topicTitle === selectedTopic;
     const matchesSearch =
       !searchQuery.trim() ||
@@ -667,6 +678,10 @@ export default function QuizPage() {
                       }`}
                     >
                       {submission.score}% Score
+                    </span>
+                  ) : quiz.targetStudentId ? (
+                    <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-200 shrink-0">
+                      Assigned to You
                     </span>
                   ) : null}
                 </div>

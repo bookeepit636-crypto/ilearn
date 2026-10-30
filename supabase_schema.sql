@@ -41,26 +41,42 @@ CREATE TABLE IF NOT EXISTS public.courses (
 CREATE TABLE IF NOT EXISTS public.quizzes (
   id TEXT PRIMARY KEY,
   title TEXT NOT NULL,
-  lesson_id TEXT NOT NULL,
+  lesson_id TEXT,
   topic_title TEXT NOT NULL,
   passing_score INT DEFAULT 75,
   duration_minutes INT DEFAULT 15,
   questions JSONB NOT NULL DEFAULT '[]'::jsonb,
+  target_student_id TEXT,
+  target_student_name TEXT,
+  created_by TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Idempotent column additions for existing quizzes tables
+ALTER TABLE public.quizzes ADD COLUMN IF NOT EXISTS target_student_id TEXT;
+ALTER TABLE public.quizzes ADD COLUMN IF NOT EXISTS target_student_name TEXT;
+ALTER TABLE public.quizzes ADD COLUMN IF NOT EXISTS created_by TEXT;
 
 -- 4. QUIZ SUBMISSIONS TABLE
 CREATE TABLE IF NOT EXISTS public.quiz_submissions (
   id TEXT PRIMARY KEY,
-  user_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE,
+  user_id UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
   quiz_id TEXT REFERENCES public.quizzes(id) ON DELETE CASCADE,
   quiz_title TEXT NOT NULL,
   score INT NOT NULL,
   passed BOOLEAN NOT NULL,
   total_questions INT NOT NULL,
   correct_answers_count INT NOT NULL,
+  user_name TEXT,
+  user_email TEXT,
+  student_id TEXT,
   submitted_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Idempotent column additions for existing quiz_submissions tables
+ALTER TABLE public.quiz_submissions ADD COLUMN IF NOT EXISTS user_name TEXT;
+ALTER TABLE public.quiz_submissions ADD COLUMN IF NOT EXISTS user_email TEXT;
+ALTER TABLE public.quiz_submissions ADD COLUMN IF NOT EXISTS student_id TEXT;
 
 -- 5. DOWNLOADABLE MATERIALS TABLE
 CREATE TABLE IF NOT EXISTS public.materials (
