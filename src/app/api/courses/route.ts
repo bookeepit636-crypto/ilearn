@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { Course } from '@/types';
 import { initialCourses } from '@/lib/mockData';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
+import { loadPersistentCourses, savePersistentCourses } from '@/lib/serverStorage';
 
 // Global in-memory courses store shared across API requests in Node runtime
 declare global {
@@ -11,19 +12,30 @@ declare global {
 
 function getCoursesStore(): Course[] {
   if (!globalThis.__coursesStore) {
-    globalThis.__coursesStore = [...initialCourses];
+    globalThis.__coursesStore = loadPersistentCourses();
   }
   return globalThis.__coursesStore;
 }
 
 function setCoursesStore(courses: Course[]) {
   globalThis.__coursesStore = courses;
+  savePersistentCourses(courses);
 }
 
 // GET /api/courses
 export async function GET() {
   try {
     let store = getCoursesStore();
+
+    // Check disk storage for updates
+    const diskStore = loadPersistentCourses();
+    if (diskStore.length > 0) {
+      const map = new Map<string, Course>();
+      store.forEach((c) => map.set(c.id, c));
+      diskStore.forEach((c) => map.set(c.id, c));
+      store = Array.from(map.values());
+      globalThis.__coursesStore = store;
+    }
 
     // If Supabase is configured, try to fetch and merge cloud courses
     if (isSupabaseConfigured()) {

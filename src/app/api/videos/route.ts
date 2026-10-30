@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { VideoLesson } from '@/types';
 import { initialVideos } from '@/lib/mockData';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
+import { loadPersistentVideos, savePersistentVideos } from '@/lib/serverStorage';
 
 declare global {
   // eslint-disable-next-line no-var
@@ -10,19 +11,30 @@ declare global {
 
 function getVideosStore(): VideoLesson[] {
   if (!globalThis.__videosStore) {
-    globalThis.__videosStore = [...initialVideos];
+    globalThis.__videosStore = loadPersistentVideos();
   }
   return globalThis.__videosStore;
 }
 
 function setVideosStore(videos: VideoLesson[]) {
   globalThis.__videosStore = videos;
+  savePersistentVideos(videos);
 }
 
 // GET /api/videos
 export async function GET() {
   try {
     let store = getVideosStore();
+
+    // Check disk storage for updates
+    const diskStore = loadPersistentVideos();
+    if (diskStore.length > 0) {
+      const map = new Map<string, VideoLesson>();
+      store.forEach((v) => map.set(v.id, v));
+      diskStore.forEach((v) => map.set(v.id, v));
+      store = Array.from(map.values());
+      globalThis.__videosStore = store;
+    }
 
     if (isSupabaseConfigured()) {
       try {

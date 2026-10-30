@@ -450,13 +450,41 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Initial fetch
     syncCloudLiveSessions();
 
-    // 1. Cross-tab BroadcastChannel for 0ms latency sync across tabs
-    let channel: BroadcastChannel | null = null;
+    // Master sync handler for all shared data
+    const syncAllSharedData = () => {
+      syncCloudCourses();
+      syncCloudQuizzes();
+      syncCloudVideos();
+      syncCloudLiveSessions();
+      syncRegisteredAccounts();
+    };
+
+    // 1. Cross-tab BroadcastChannels for 0ms latency sync across student & admin tabs
+    let liveChannel: BroadcastChannel | null = null;
+    let quizChannel: BroadcastChannel | null = null;
+    let courseChannel: BroadcastChannel | null = null;
+    let videoChannel: BroadcastChannel | null = null;
+
     try {
       if (typeof window !== 'undefined' && typeof BroadcastChannel !== 'undefined') {
-        channel = new BroadcastChannel('bookkeepit_live_sync');
-        channel.onmessage = () => {
+        liveChannel = new BroadcastChannel('bookkeepit_live_sync');
+        liveChannel.onmessage = () => {
           syncCloudLiveSessions();
+        };
+
+        quizChannel = new BroadcastChannel('bookkeepit_quiz_sync');
+        quizChannel.onmessage = () => {
+          syncCloudQuizzes();
+        };
+
+        courseChannel = new BroadcastChannel('bookkeepit_course_sync');
+        courseChannel.onmessage = () => {
+          syncCloudCourses();
+        };
+
+        videoChannel = new BroadcastChannel('bookkeepit_video_sync');
+        videoChannel.onmessage = () => {
+          syncCloudVideos();
         };
       }
     } catch {
@@ -465,9 +493,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     // 2. Storage event listener for cross-tab storage changes
     const handleStorage = (e: StorageEvent) => {
-      if (e.key === 'bookkeepit_app_state' && e.newValue) {
+      if ((e.key === 'bookkeepit_app_state' || e.key === LOCAL_STORAGE_KEY) && e.newValue) {
         try {
           const parsed = JSON.parse(e.newValue);
+          if (parsed.quizzes && Array.isArray(parsed.quizzes)) {
+            setQuizzes(parsed.quizzes);
+          }
+          if (parsed.courses && Array.isArray(parsed.courses)) {
+            setCourses(parsed.courses.map(normalizeCourse));
+          }
+          if (parsed.videos && Array.isArray(parsed.videos)) {
+            setVideos(parsed.videos);
+          }
           if (parsed.liveSessions && Array.isArray(parsed.liveSessions)) {
             setLiveSessions(parsed.liveSessions.filter((s: LiveSession) => !isMockLiveSession(s)));
           }
@@ -480,16 +517,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     // 3. Periodic real-time polling every 3.5 seconds to keep all student devices synced
     const pollInterval = setInterval(() => {
-      syncCloudLiveSessions();
+      syncAllSharedData();
     }, 3500);
 
     // 4. Instant sync on window focus and visibility change
     const handleFocus = () => {
-      syncCloudLiveSessions();
+      syncAllSharedData();
     };
     const handleVisibility = () => {
       if (document.visibilityState === 'visible') {
-        syncCloudLiveSessions();
+        syncAllSharedData();
       }
     };
     // 5. Supabase Realtime subscription for instant cross-client sync
@@ -525,7 +562,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     return () => {
       isMounted = false;
-      channel?.close();
+      liveChannel?.close();
+      quizChannel?.close();
+      courseChannel?.close();
+      videoChannel?.close();
       unsubRealtime();
       window.removeEventListener('storage', handleStorage);
       clearInterval(pollInterval);
@@ -899,6 +939,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     saveCourseToSupabase(normalized).catch(() => {});
     saveCourseToApi(normalized).catch(() => {});
 
+    try {
+      if (typeof window !== 'undefined' && typeof BroadcastChannel !== 'undefined') {
+        const bc = new BroadcastChannel('bookkeepit_course_sync');
+        bc.postMessage({ type: 'add', course: normalized });
+        bc.close();
+      }
+    } catch {}
+
     // Broadcast new course announcement
     const notif: NotificationItem = {
       id: `notif-crs-${Date.now()}`,
@@ -919,6 +967,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
     saveCourseToSupabase(normalized).catch(() => {});
     saveCourseToApi(normalized).catch(() => {});
+
+    try {
+      if (typeof window !== 'undefined' && typeof BroadcastChannel !== 'undefined') {
+        const bc = new BroadcastChannel('bookkeepit_course_sync');
+        bc.postMessage({ type: 'update', course: normalized });
+        bc.close();
+      }
+    } catch {}
   };
 
   const updateCourseTopics = (courseId: string, updatedTopics: Topic[]) => {
@@ -942,6 +998,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (targetUpdatedCourse) {
       saveCourseToSupabase(targetUpdatedCourse).catch(() => {});
       saveCourseToApi(targetUpdatedCourse).catch(() => {});
+
+      try {
+        if (typeof window !== 'undefined' && typeof BroadcastChannel !== 'undefined') {
+          const bc = new BroadcastChannel('bookkeepit_course_sync');
+          bc.postMessage({ type: 'update', course: targetUpdatedCourse });
+          bc.close();
+        }
+      } catch {}
     }
   };
 
@@ -949,6 +1013,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setCourses((prev) => prev.filter((c) => c.id !== id));
     deleteCourseFromSupabase(id).catch(() => {});
     deleteCourseFromApi(id).catch(() => {});
+
+    try {
+      if (typeof window !== 'undefined' && typeof BroadcastChannel !== 'undefined') {
+        const bc = new BroadcastChannel('bookkeepit_course_sync');
+        bc.postMessage({ type: 'delete', id });
+        bc.close();
+      }
+    } catch {}
   };
 
   const addVideo = (video: VideoLesson) => {
@@ -956,6 +1028,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Persist to Supabase database & API in background
     saveVideoToSupabase(video).catch(() => {});
     saveVideoToApi(video).catch(() => {});
+
+    try {
+      if (typeof window !== 'undefined' && typeof BroadcastChannel !== 'undefined') {
+        const bc = new BroadcastChannel('bookkeepit_video_sync');
+        bc.postMessage({ type: 'add', video });
+        bc.close();
+      }
+    } catch {}
 
     const notif: NotificationItem = {
       id: `notif-vid-${Date.now()}`,
@@ -973,6 +1053,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setVideos((prev) => prev.map((v) => (v.id === video.id ? video : v)));
     saveVideoToSupabase(video).catch(() => {});
     saveVideoToApi(video).catch(() => {});
+
+    try {
+      if (typeof window !== 'undefined' && typeof BroadcastChannel !== 'undefined') {
+        const bc = new BroadcastChannel('bookkeepit_video_sync');
+        bc.postMessage({ type: 'update', video });
+        bc.close();
+      }
+    } catch {}
   };
 
   const deleteVideo = (id: string) => {
@@ -980,6 +1068,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     deleteVideoBlob(id);
     deleteVideoFromSupabase(id).catch(() => {});
     deleteVideoFromApi(id).catch(() => {});
+
+    try {
+      if (typeof window !== 'undefined' && typeof BroadcastChannel !== 'undefined') {
+        const bc = new BroadcastChannel('bookkeepit_video_sync');
+        bc.postMessage({ type: 'delete', id });
+        bc.close();
+      }
+    } catch {}
   };
 
   const addMaterial = (material: DownloadableMaterial) => {
@@ -994,6 +1090,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setQuizzes((prev) => [quiz, ...prev.filter((q) => q.id !== quiz.id)]);
     saveQuizToSupabase(quiz).catch(() => {});
     saveQuizToApi(quiz).catch(() => {});
+
+    try {
+      if (typeof window !== 'undefined' && typeof BroadcastChannel !== 'undefined') {
+        const bc = new BroadcastChannel('bookkeepit_quiz_sync');
+        bc.postMessage({ type: 'add', quiz });
+        bc.close();
+      }
+    } catch {}
 
     const notif: NotificationItem = {
       id: `notif-qz-${Date.now()}`,
@@ -1011,12 +1115,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setQuizzes((prev) => prev.map((q) => (q.id === quiz.id ? quiz : q)));
     saveQuizToSupabase(quiz).catch(() => {});
     saveQuizToApi(quiz).catch(() => {});
+
+    try {
+      if (typeof window !== 'undefined' && typeof BroadcastChannel !== 'undefined') {
+        const bc = new BroadcastChannel('bookkeepit_quiz_sync');
+        bc.postMessage({ type: 'update', quiz });
+        bc.close();
+      }
+    } catch {}
   };
 
   const deleteQuiz = (id: string) => {
     setQuizzes((prev) => prev.filter((q) => q.id !== id));
     deleteQuizFromSupabase(id).catch(() => {});
     deleteQuizFromApi(id).catch(() => {});
+
+    try {
+      if (typeof window !== 'undefined' && typeof BroadcastChannel !== 'undefined') {
+        const bc = new BroadcastChannel('bookkeepit_quiz_sync');
+        bc.postMessage({ type: 'delete', id });
+        bc.close();
+      }
+    } catch {}
   };
 
   const broadcastAnnouncement = (title: string, message: string) => {

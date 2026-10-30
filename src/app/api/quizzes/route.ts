@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { Quiz } from '@/types';
 import { initialQuizzes } from '@/lib/mockData';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
+import { loadPersistentQuizzes, savePersistentQuizzes } from '@/lib/serverStorage';
 
 declare global {
   // eslint-disable-next-line no-var
@@ -10,13 +11,14 @@ declare global {
 
 function getQuizzesStore(): Quiz[] {
   if (!globalThis.__quizzesStore) {
-    globalThis.__quizzesStore = [...initialQuizzes];
+    globalThis.__quizzesStore = loadPersistentQuizzes();
   }
   return globalThis.__quizzesStore;
 }
 
 function setQuizzesStore(quizzes: Quiz[]) {
   globalThis.__quizzesStore = quizzes;
+  savePersistentQuizzes(quizzes);
 }
 
 // GET /api/quizzes
@@ -24,6 +26,17 @@ export async function GET() {
   try {
     let store = getQuizzesStore();
 
+    // Check disk storage for latest updates
+    const diskStore = loadPersistentQuizzes();
+    if (diskStore.length > 0) {
+      const map = new Map<string, Quiz>();
+      store.forEach((q) => map.set(q.id, q));
+      diskStore.forEach((q) => map.set(q.id, q));
+      store = Array.from(map.values());
+      globalThis.__quizzesStore = store;
+    }
+
+    // Try fetching and merging cloud quizzes from Supabase if configured
     if (isSupabaseConfigured()) {
       try {
         const { data, error } = await supabase
@@ -35,10 +48,11 @@ export async function GET() {
           const map = new Map<string, Quiz>();
           store.forEach((q) => map.set(q.id, q));
           data.forEach((row: any) => {
+            const existing = map.get(row.id);
             map.set(row.id, {
               id: row.id,
               title: row.title,
-              courseId: row.course_id || undefined,
+              courseId: existing?.courseId || row.course_id || undefined,
               lessonId: row.lesson_id,
               topicTitle: row.topic_title,
               passingScore: row.passing_score ?? 75,
@@ -115,11 +129,11 @@ export async function POST(req: Request) {
 
     if (isSupabaseConfigured()) {
       try {
-        const { error } = await supabase.from('quizzes').upsert(
+        // Notice: Column 'course_id' is excluded because it does not exist in Supabase quizzes schema
+        await supabase.from('quizzes').upsert(
           {
             id: validatedQuiz.id,
             title: validatedQuiz.title,
-            course_id: validatedQuiz.courseId,
             lesson_id: validatedQuiz.lessonId,
             topic_title: validatedQuiz.topicTitle,
             passing_score: validatedQuiz.passingScore,
@@ -128,9 +142,8 @@ export async function POST(req: Request) {
           },
           { onConflict: 'id' }
         );
-        if (error) console.warn('Supabase upsert quiz note:', error.message);
       } catch (e) {
-        // silent fallback
+        // Fallback to local and server disk store
       }
     }
 
@@ -171,7 +184,6 @@ export async function PUT(req: Request) {
           {
             id: updatedQuiz.id,
             title: updatedQuiz.title,
-            course_id: updatedQuiz.courseId,
             lesson_id: updatedQuiz.lessonId,
             topic_title: updatedQuiz.topicTitle,
             passing_score: updatedQuiz.passingScore,

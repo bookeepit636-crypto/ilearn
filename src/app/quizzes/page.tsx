@@ -16,6 +16,7 @@ import {
   LayoutGrid,
   RefreshCw,
   RotateCcw,
+  Search,
   ShieldCheck,
   SlidersHorizontal,
   Sparkles,
@@ -32,6 +33,31 @@ export default function QuizPage() {
   const [adminPreviewQuiz, setAdminPreviewQuiz] = useState<Quiz | null>(null);
   const [userAnswers, setUserAnswers] = useState<Record<string, number>>({});
   const [submissionResult, setSubmissionResult] = useState<QuizSubmission | null>(null);
+
+  // Search & Filter State
+  const [selectedTopic, setSelectedTopic] = useState<string>('All');
+  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  // Read URL query parameter ?quizId=... or ?id=... so students clicking "Take Lesson Quiz" open directly
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const targetQuizId = params.get('quizId') || params.get('id');
+      if (targetQuizId && quizzes.length > 0) {
+        const found = quizzes.find((q) => q.id === targetQuizId);
+        if (found) {
+          if (isAdmin) {
+            setAdminPreviewQuiz(found);
+          } else {
+            setActiveQuiz(found);
+            setUserAnswers({});
+            setSubmissionResult(null);
+          }
+        }
+      }
+    }
+  }, [quizzes, isAdmin]);
 
   // Live Timer State (in seconds)
   const [timeLeftSeconds, setTimeLeftSeconds] = useState<number>(0);
@@ -113,6 +139,18 @@ export default function QuizPage() {
   const answeredCount = activeQuiz ? Object.keys(userAnswers).length : 0;
   const totalQuestionsCount = activeQuiz ? activeQuiz.questions.length : 0;
 
+  const topicsList = ['All', 'Basic Accounting Principles', 'Bookkeeping Cycle', 'Trial Balance & Adjustments', 'Financial Statements', 'Payroll & Taxation'];
+
+  const filteredQuizzes = quizzes.filter((quiz) => {
+    const matchesTopic = selectedTopic === 'All' || quiz.topicTitle === selectedTopic;
+    const matchesSearch =
+      !searchQuery.trim() ||
+      quiz.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      quiz.topicTitle.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      Boolean(quiz.courseId && courses.find((c) => c.id === quiz.courseId)?.title.toLowerCase().includes(searchQuery.toLowerCase()));
+    return matchesTopic && matchesSearch;
+  });
+
   return (
     <div className="space-y-8 animate-in fade-in duration-300">
       {/* Header */}
@@ -149,6 +187,58 @@ export default function QuizPage() {
           </Link>
         </div>
       )}
+
+      {/* Category Pills & Search Bar */}
+      <div className="flex flex-col md:flex-row gap-4 items-stretch md:items-center justify-between">
+        <div className="flex items-center gap-2 overflow-x-auto pb-1 max-w-full">
+          {topicsList.map((t) => (
+            <button
+              key={t}
+              onClick={() => setSelectedTopic(t)}
+              className={`px-4 py-2 rounded-full text-xs font-bold transition whitespace-nowrap shrink-0 ${
+                selectedTopic === t
+                  ? 'bg-[#0077b6] text-white shadow-xs'
+                  : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
+              }`}
+            >
+              {t}
+            </button>
+          ))}
+        </div>
+
+        <div className="flex items-center gap-2 shrink-0">
+          <div className="relative flex-1 md:w-64">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search quizzes..."
+              className="w-full pl-9 pr-3 py-2 bg-white border border-slate-200 rounded-full text-xs text-slate-700 placeholder-slate-400 focus:outline-none focus:border-[#0077b6]"
+            />
+          </div>
+          <button
+            onClick={async () => {
+              setIsRefreshing(true);
+              try {
+                const res = await fetch('/api/quizzes', { cache: 'no-store' });
+                if (res.ok) {
+                  const data = await res.json();
+                  if (data.quizzes) {
+                    window.location.reload();
+                  }
+                }
+              } catch {}
+              setIsRefreshing(false);
+            }}
+            disabled={isRefreshing}
+            className="p-2.5 rounded-full bg-white border border-slate-200 text-slate-500 hover:text-slate-800 hover:bg-slate-50 transition shrink-0"
+            title="Refresh quizzes catalog"
+          >
+            <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin text-[#0077b6]' : ''}`} />
+          </button>
+        </div>
+      </div>
 
       {/* ADMIN PREVIEW MODAL */}
       {adminPreviewQuiz && (
@@ -533,9 +623,18 @@ export default function QuizPage() {
         </div>
       )}
 
+      {/* Empty State */}
+      {filteredQuizzes.length === 0 && (
+        <div className="text-center py-16 bg-white rounded-3xl border border-slate-200 space-y-3">
+          <FileQuestion className="w-12 h-12 text-slate-300 mx-auto" />
+          <p className="text-sm font-bold text-slate-700">No quizzes found matching your selection.</p>
+          <p className="text-xs text-slate-400">Try selecting "All" categories or clearing your search query.</p>
+        </div>
+      )}
+
       {/* QUIZ LIST GRID */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {quizzes.map((quiz) => {
+        {filteredQuizzes.map((quiz) => {
           const submission = submissions.find((s) => s.quizId === quiz.id);
 
           return (

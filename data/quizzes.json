@@ -1,0 +1,104 @@
+[
+  {
+    "id": "qz-101",
+    "title": "Quiz 1: Assets, Liabilities & Owner's Equity",
+    "lessonId": "lsn-1",
+    "topicTitle": "Basic Accounting Principles",
+    "passingScore": 80,
+    "durationMinutes": 15,
+    "questions": [
+      {
+        "id": "q1",
+        "question": "Which of the following is classified as a Current Asset?",
+        "options": [
+          "Accounts Payable",
+          "Cash and Cash Equivalents",
+          "Office Building",
+          "Mortgage Payable"
+        ],
+        "correctAnswerIndex": 1,
+        "explanation": "Cash and cash equivalents are liquid current assets expected to be converted or used within 1 year."
+      },
+      {
+        "id": "q2",
+        "question": "If a company has total Assets of $150,000 and total Liabilities of $60,000, what is the Owner's Equity?",
+        "options": [
+          "$210,000",
+          "$90,000",
+          "$150,000",
+          "$60,000"
+        ],
+        "correctAnswerIndex": 1,
+        "explanation": "Using the Accounting Equation: Equity = Assets - Liabilities = $150,000 - $60,000 = $90,000."
+      },
+      {
+        "id": "q3",
+        "question": "What happens to the accounting equation when a business purchases equipment for cash?",
+        "options": [
+          "Total Assets increase and Liabilities increase",
+          "One Asset increases while another Asset decreases (Total Assets remain unchanged)",
+          "Total Assets decrease and Equity decreases",
+          "Liabilities decrease and Equity increases"
+        ],
+        "correctAnswerIndex": 1,
+        "explanation": "Equipment (Asset) increases by the cost, while Cash (Asset) decreases by the same amount."
+      }
+    ]
+  },
+  {
+    "id": "qz-102",
+    "title": "Quiz 2: Debits and Credits Fundamentals",
+    "lessonId": "lsn-2",
+    "topicTitle": "Basic Accounting Principles",
+    "passingScore": 75,
+    "durationMinutes": 15,
+    "questions": [
+      {
+        "id": "q4",
+        "question": "What is the normal balance of an Expense account?",
+        "options": [
+          "Credit",
+          "Debit",
+          "Neutral",
+          "Depends on transaction"
+        ],
+        "correctAnswerIndex": 1,
+        "explanation": "Expenses reduce owner equity, so they have a normal Debit balance."
+      },
+      {
+        "id": "q5",
+        "question": "To increase a Revenue account balance, you should:",
+        "options": [
+          "Debit the account",
+          "Credit the account",
+          "Multiply by interest rate",
+          "Zero out balance"
+        ],
+        "correctAnswerIndex": 1,
+        "explanation": "Revenues increase Owner's Equity, which has a normal Credit balance. Therefore, revenues are increased by Credit."
+      }
+    ]
+  },
+  {
+    "id": "qz-104",
+    "title": "Quiz 3: General Journal Entries",
+    "lessonId": "lsn-4",
+    "topicTitle": "Bookkeeping Cycle",
+    "passingScore": 80,
+    "durationMinutes": 20,
+    "questions": [
+      {
+        "id": "q6",
+        "question": "A business renders $2,500 of bookkeeping services on account (to be billed). What is the correct journal entry?",
+        "options": [
+          "Debit Cash $2,500, Credit Revenue $2,500",
+          "Debit Accounts Receivable $2,500, Credit Service Revenue $2,500",
+          "Debit Service Revenue $2,500, Credit Accounts Payable $2,500",
+          "Debit Accounts Payable $2,500, Credit Cash $2,500"
+        ],
+        "correctAnswerIndex": 1,
+        "explanation": "Rendering services on account creates a claim against the customer (Accounts Receivable - Asset) and recognizes Service Revenue."
+      }
+    ]
+  }
+]

@@ -23,7 +23,7 @@ import confetti from 'canvas-confetti';
 import { VideoPlayer } from '@/components/video/VideoPlayer';
 
 export default function CoursesPage() {
-  const { courses, toggleLessonCompletion } = useApp();
+  const { courses, quizzes, toggleLessonCompletion } = useApp();
   const [selectedCourseId, setSelectedCourseId] = useState<string | null>(null);
   const [selectedLessonId, setSelectedLessonId] = useState<string | null>(null);
   const [sortOrder, setSortOrder] = useState<'latest' | 'progress'>('latest');
@@ -49,6 +49,11 @@ export default function CoursesPage() {
       allCourseLessons[0] ||
       null
     : null;
+
+  // Find linked quiz for this lesson or course
+  const attachedQuiz = activeLesson?.quizId ? quizzes.find((q) => q.id === activeLesson.quizId) : null;
+  const courseQuiz = !attachedQuiz && activeCourse ? quizzes.find((q) => q.courseId === activeCourse.id) : null;
+  const targetQuiz = attachedQuiz || courseQuiz;
 
   const currentLessonIndex = allCourseLessons.findIndex((l) => l.id === activeLesson?.id);
   const prevLesson = currentLessonIndex > 0 ? allCourseLessons[currentLessonIndex - 1] : null;
@@ -309,6 +314,15 @@ export default function CoursesPage() {
                                 <span className="truncate">{lsn.title}</span>
                               </div>
                               <div className="flex items-center gap-1.5 shrink-0">
+                                {lsn.quizId && (
+                                  <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full flex items-center gap-1 ${
+                                    isSelected
+                                      ? 'bg-white/20 text-white'
+                                      : 'bg-indigo-50 text-indigo-700 border border-indigo-200'
+                                  }`}>
+                                    <FileQuestion className="w-2.5 h-2.5" /> Quiz
+                                  </span>
+                                )}
                                 {!lsn.isCompleted && !isSelected && (
                                   <span className="text-[9px] font-bold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded">
                                     Pending
@@ -406,7 +420,7 @@ export default function CoursesPage() {
                       {/* Action Links: Take Lesson Quiz & Download Worksheets */}
                       <div className="flex flex-col sm:flex-row gap-3">
                         <Link
-                          href="/quizzes"
+                          href={targetQuiz ? `/quizzes?quizId=${targetQuiz.id}` : `/quizzes`}
                           onClick={() => {
                             setSelectedCourseId(null);
                             setSelectedLessonId(null);
@@ -414,7 +428,9 @@ export default function CoursesPage() {
                           className="flex-1 p-3.5 rounded-2xl bg-cyan-50 border border-cyan-200 text-cyan-800 hover:bg-cyan-100 flex items-center justify-center gap-2.5 transition font-bold text-xs"
                         >
                           <FileQuestion className="w-4 h-4 text-[#0077b6]" />
-                          <span>Take Lesson Quiz</span>
+                          <span className="truncate">
+                            {targetQuiz ? `Take Quiz: ${targetQuiz.title}` : 'Take Lesson Quiz'}
+                          </span>
                         </Link>
 
                         <Link
